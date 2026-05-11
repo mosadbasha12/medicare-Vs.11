@@ -23,6 +23,7 @@ workflows:
 
       - name: Build iOS app
         script: |
+          export EXPO_TOKEN=$EXPO_TOKEN
           eas build --platform ios --profile preview --non-interactive
 
     artifacts:
