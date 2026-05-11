@@ -37,7 +37,10 @@ jobs:
         run: npm run build:web
 
       - name: Add Netlify redirects
-        run: cp public/_redirects dist/_redirects
+        run: |
+          cp public/_redirects dist/_redirects
+          cp assets/favicon-48.png dist/favicon.png
+          node scripts/patch-web-head.cjs
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
