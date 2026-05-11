@@ -17,13 +17,12 @@ workflows:
         script: |
           npm install -g eas-cli
 
-      - name: Expo prebuild
+      - name: Login to Expo
         script: |
-          npx expo prebuild
+          eas whoami || eas login --token $EXPO_TOKEN
 
       - name: Build iOS app
         script: |
-          export EXPO_TOKEN=$EXPO_TOKEN
           eas build --platform ios --profile preview --non-interactive
 
     artifacts:
