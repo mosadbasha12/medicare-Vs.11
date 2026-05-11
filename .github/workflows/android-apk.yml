@@ -1,0 +1,54 @@
+﻿name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS
+        run: npm install --global eas-cli
+
+      - name: Build APK
+        run: eas build --platform android --profile preview --non-interactive --local --output medicare.apk
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: medicare-apk
+          path: medicare.apk
+
+      - name: Publish latest APK release
+        if: github.ref == 'refs/heads/main'
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f latest
+          git push -f origin latest
+          gh release create latest medicare.apk --title "Medicare latest APK" --notes "Latest Android APK build from ${GITHUB_SHA}."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
