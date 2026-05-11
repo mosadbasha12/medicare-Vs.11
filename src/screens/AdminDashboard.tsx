@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-ico
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor } from '../utils/localDataService';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, clearSession, getPasswordResetRequests, resolvePasswordResetRequest } from '../utils/storage';
+import { ADMIN_EMAIL, ADMIN_PASSWORD_LABEL, clearSession, getPasswordResetRequests, resolvePasswordResetRequest } from '../utils/storage';
 import { useUser } from '../context/UserContext';
 import type { PasswordResetRequest } from '../types';
 
@@ -185,7 +185,7 @@ export default function AdminDashboard({ navigation }: any) {
           <Ionicons name="shield-checkmark" size={24} color={COLORS.danger} />
           <Text style={styles.adminName}>{user?.name}</Text>
           <Text style={styles.adminEmail}>{user?.email}</Text>
-          <Text style={styles.adminEmail}>حساب الأدمن: {ADMIN_EMAIL} / {ADMIN_PASSWORD}</Text>
+          <Text style={styles.adminEmail}>حساب الأدمن: {ADMIN_EMAIL} / {ADMIN_PASSWORD_LABEL}</Text>
         </View>
 
         <View style={styles.tabRow}>

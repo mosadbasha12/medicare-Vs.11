@@ -8,7 +8,8 @@ const PASSWORD_RESET_KEY = '@password_reset_requests';
 const FIREBASE_ENABLED = process.env.EXPO_PUBLIC_FIREBASE_API_KEY !== 'YOUR_API_KEY_HERE';
 
 export const ADMIN_EMAIL = 'admin@medicare.com';
-export const ADMIN_PASSWORD = 'Mm20121011#';
+export const ADMIN_PASSWORD_LABEL = 'تم تعيين كلمة مرور مخصصة';
+const ADMIN_PASSWORD_HASH = 'hashed_l4y4l7_11';
 
 export const hashPassword = (password: string): string => {
   let hash = 0;
@@ -46,7 +47,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
     if (adminIndex > -1) {
       existing[adminIndex] = {
         ...existing[adminIndex],
-        password: hashPassword(ADMIN_PASSWORD),
+        password: ADMIN_PASSWORD_HASH,
         isActive: true,
         isApproved: true,
         role: 'admin',
@@ -60,7 +61,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
       uid: 'admin_001',
       name: 'المسؤول الرئيسي',
       email: ADMIN_EMAIL,
-      password: hashPassword(ADMIN_PASSWORD),
+      password: ADMIN_PASSWORD_HASH,
       level: 'ذهبي',
       role: 'admin',
       isActive: true,
