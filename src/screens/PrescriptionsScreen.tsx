@@ -1,0 +1,145 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, FlatList, Alert, Platform } from 'react-native';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { COLORS } from '../theme';
+import { GlassCard } from '../components/GlassCard';
+import { useUser } from '../context/UserContext';
+import { getUserPrescriptions, orderPrescription, getPrescriptionOrders, updatePrescriptionOrderStatus } from '../utils/localDataService';
+
+function showAlert(title: string, message: string, onOk?: () => void) {
+  if (Platform.OS === 'web') {
+    alert(`${title}\n${message}`);
+    if (onOk) onOk();
+  } else {
+    Alert.alert(title, message, [{ text: 'حسناً', onPress: onOk }]);
+  }
+}
+
+const ORDER_STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string }> = {
+  'جاري التوصيل': { color: COLORS.accentWarm, bg: COLORS.accentWarm + '22', icon: 'delivery' },
+  'تم التوصيل': { color: COLORS.secondary, bg: COLORS.secondary + '22', icon: 'checkmark-circle' },
+  'قيد المراجعة': { color: COLORS.primaryLight, bg: COLORS.primaryLight + '22', icon: 'hourglass' },
+  'ملغي': { color: COLORS.danger, bg: COLORS.danger + '22', icon: 'close-circle' },
+};
+
+export default function PrescriptionsScreen({ navigation }: { navigation: { goBack: () => void } }) {
+  const { user } = useUser();
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+
+  const fetchData = async () => {
+    if (!user?.uid) return;
+    const [prescs, ords] = await Promise.all([
+      getUserPrescriptions(user.uid),
+      getPrescriptionOrders(user.uid),
+    ]);
+    setPrescriptions(prescs);
+    setOrders(ords);
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [user?.uid]);
+
+  const handleOrder = async (item: any) => {
+    const success = await orderPrescription(user!.uid, item);
+    if (success) {
+      showAlert('تم الطلب', `جاري توصيل ${item.med} إلى عنوانك\nسيصلك إشعار عند وصول الطلب`, () => {
+        fetchData();
+      });
+    } else {
+      showAlert('خطأ', 'فشل في إرسال الطلب');
+    }
+  };
+
+  const getPrescriptionOrder = (prescriptionId: string) => {
+    return orders.find((o) => o.prescriptionId === prescriptionId);
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>الوصفات الطبية</Text>
+        <View style={{ width: 28 }} />
+      </View>
+
+      <FlatList
+        data={prescriptions}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>لا توجد وصفات طبية</Text>
+        }
+        renderItem={({ item }) => {
+          const order = getPrescriptionOrder(item.id);
+          const statusConfig = order ? ORDER_STATUS_CONFIG[order.status] : null;
+
+          return (
+            <GlassCard style={styles.card}>
+              <View style={styles.topRow}>
+                <View style={styles.medIconBox}>
+                  <FontAwesome5 name="pills" size={20} color={COLORS.accentWarm} />
+                </View>
+                <View style={styles.medInfo}>
+                  <Text style={styles.medName}>{item.med}</Text>
+                  <Text style={styles.dosage}>{item.dosage}</Text>
+                </View>
+              </View>
+
+              {order && (
+                <View style={[styles.statusBadge, { backgroundColor: statusConfig?.bg || 'transparent' }]}>
+                  <Ionicons name={statusConfig?.icon as any} size={16} color={statusConfig?.color || '#FFF'} />
+                  <Text style={[styles.statusText, { color: statusConfig?.color || '#FFF' }]}>
+                    {order.status} • {order.orderedAt}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.bottomRow}>
+                <Text style={styles.footerText}>بواسطة: {item.doctor}</Text>
+                <Text style={styles.footerText}>{item.date}</Text>
+                {!order && (
+                  <TouchableOpacity style={styles.orderBtn} onPress={() => handleOrder(item)}>
+                    <Ionicons name="cart" size={12} color="#000" />
+                    <Text style={styles.orderText}>طلب الآن</Text>
+                  </TouchableOpacity>
+                )}
+                {order && order.status === 'جاري التوصيل' && (
+                  <View style={styles.deliveringBadge}>
+                    <Ionicons name="bicycle" size={14} color="#FFF" />
+                    <Text style={styles.deliveringText}>قيد التوصيل</Text>
+                  </View>
+                )}
+              </View>
+            </GlassCard>
+          );
+        }}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: COLORS.bgBase, direction: 'rtl' },
+  header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, marginTop: 40 },
+  headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: 'bold' },
+  list: { padding: 24 },
+  card: { marginBottom: 16, padding: 16 },
+  topRow: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 12 },
+  medIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.accentWarm + '22', justifyContent: 'center', alignItems: 'center', marginLeft: 16 },
+  medInfo: { flex: 1 },
+  medName: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
+  dosage: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 4 },
+  statusBadge: { flexDirection: 'row-reverse', alignItems: 'center', padding: 8, borderRadius: 8, marginBottom: 12, gap: 8 },
+  statusText: { fontSize: 13, fontWeight: 'bold' },
+  bottomRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingTop: 12 },
+  footerText: { color: COLORS.textMuted, fontSize: 11 },
+  orderBtn: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  orderText: { color: '#000', fontSize: 11, fontWeight: 'bold' },
+  deliveringBadge: { backgroundColor: COLORS.accentWarm, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  deliveringText: { color: '#000', fontSize: 11, fontWeight: 'bold' },
+  emptyText: { color: COLORS.textSecondary, textAlign: 'center', marginTop: 40, fontSize: 16 },
+});

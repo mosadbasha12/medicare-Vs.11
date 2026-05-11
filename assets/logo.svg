@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="#190A12" stroke="#FF6B7A" stroke-width="3" opacity="1"/>
+  
+  <!-- Heart Shape -->
+  <path d="M256 400 
+           C256 400 100 280 100 190 
+           C100 140 150 100 200 120 
+           C225 130 250 160 256 180 
+           C262 160 287 130 312 120 
+           C362 100 412 140 412 190 
+           C412 280 256 400 256 400Z" 
+        fill="#D7263D"/>
+  
+  <!-- Medical Cross -->
+  <rect x="236" y="150" width="40" height="120" rx="8" fill="#FFFFFF" opacity="0.95"/>
+  <rect x="196" y="190" width="120" height="40" rx="8" fill="#FFFFFF" opacity="0.95"/>
+  
+  <!-- Heartbeat Line -->
+  <path d="M80 300 L150 300 L180 250 L210 350 L240 260 L270 330 L290 300 L432 300" 
+        fill="none" 
+        stroke="#FF6B7A" 
+        stroke-width="10" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+</svg>
