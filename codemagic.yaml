@@ -5,8 +5,8 @@ workflows:
     max_build_duration: 60
 
     environment:
-      vars:
-        EXPO_TOKEN: $EXPO_TOKEN
+      groups:
+        - codemagic-secure
 
     scripts:
       - name: Install dependencies
