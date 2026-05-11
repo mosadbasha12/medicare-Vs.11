@@ -25,6 +25,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b83a3765-46cb-4cbf-9acc-3b21487cdcb2"
+      }
+    },
+    "owner": "mohamedmosad1412"
   }
 }
