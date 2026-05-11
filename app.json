@@ -35,9 +35,6 @@
       "favicon": "./assets/favicon-48.png",
       "bundler": "metro"
     },
-    "experiments": {
-      "baseUrl": "/medicare-Vs.11"
-    },
     "extra": {
       "eas": {
         "projectId": "b83a3765-46cb-4cbf-9acc-3b21487cdcb2"

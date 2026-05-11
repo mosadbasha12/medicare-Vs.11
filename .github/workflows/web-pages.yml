@@ -36,6 +36,9 @@ jobs:
       - name: Build web app
         run: npm run build:web
 
+      - name: Add Netlify redirects
+        run: cp public/_redirects dist/_redirects
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

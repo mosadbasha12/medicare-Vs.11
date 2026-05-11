@@ -1,0 +1,3 @@
+[build]
+  command = "npm run build:web && cp public/_redirects dist/_redirects"
+  publish = "dist"
