@@ -8,7 +8,7 @@ const PASSWORD_RESET_KEY = '@password_reset_requests';
 const FIREBASE_ENABLED = process.env.EXPO_PUBLIC_FIREBASE_API_KEY !== 'YOUR_API_KEY_HERE';
 
 export const ADMIN_EMAIL = 'admin@medicare.com';
-export const ADMIN_PASSWORD = 'admin123';
+export const ADMIN_PASSWORD = 'Mm20121011#';
 
 export const hashPassword = (password: string): string => {
   let hash = 0;
@@ -42,8 +42,16 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
 
     const existingStr = await AsyncStorage.getItem(USERS_KEY);
     const existing = existingStr ? JSON.parse(existingStr) : [];
-    const adminExists = existing.find((u: any) => u.email === ADMIN_EMAIL);
-    if (adminExists) {
+    const adminIndex = existing.findIndex((u: any) => u.email === ADMIN_EMAIL);
+    if (adminIndex > -1) {
+      existing[adminIndex] = {
+        ...existing[adminIndex],
+        password: hashPassword(ADMIN_PASSWORD),
+        isActive: true,
+        isApproved: true,
+        role: 'admin',
+      };
+      await AsyncStorage.setItem(USERS_KEY, JSON.stringify(existing));
       await AsyncStorage.setItem(ADMIN_INIT_KEY, 'true');
       return true;
     }
