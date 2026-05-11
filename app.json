@@ -13,7 +13,8 @@
       "backgroundColor": "#190A12"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mohamedmosad1412.medicare"
     },
     "android": {
       "adaptiveIcon": {
