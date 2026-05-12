@@ -16,6 +16,12 @@ export const ADMIN_EMAIL = 'admin@medicare.com';
 export const ADMIN_PASSWORD_LABEL = 'تم تعيين كلمة مرور مخصصة';
 const ADMIN_PASSWORD_HASH = 'hashed_l4y4l7_11';
 
+const removeUndefinedValues = <T extends Record<string, any>>(value: T): T => {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined)
+  ) as T;
+};
+
 export const hashPassword = (password: string): string => {
   let hash = 0;
   for (let i = 0; i < password.length; i++) {
@@ -171,10 +177,10 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
   if (FIREBASE_ENABLED) {
     const existing = await getDocs(query(collection(db, 'users'), where('emailLower', '==', user.email.trim().toLowerCase())));
     if (!existing.empty) return null;
-    await setDoc(doc(db, 'users', uid), {
+    await setDoc(doc(db, 'users', uid), removeUndefinedValues({
       ...userWithPass,
       emailLower: user.email.trim().toLowerCase(),
-    });
+    }));
   }
   const success = await saveUserToStorage(userWithPass);
   if (success) {
