@@ -4,7 +4,6 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import {
-  createVerificationToken,
   isStrongPassword,
   isThreePartName,
   isValidEmailFormat,
@@ -27,7 +26,7 @@ const showAlert = (title: string, message: string) => {
 export default function RegisterScreen({ navigation }: { navigation: any }) {
   const [role, setRole] = useState<UserRole>('user');
   const [loading, setLoading] = useState(false);
-  const { user, setUser } = useUser();
+  const { user } = useUser();
 
   useEffect(() => {
     if (user) {
@@ -43,9 +42,6 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [enteredCode, setEnteredCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
   const [specialty, setSpecialty] = useState('');
   const [medicalId, setMedicalId] = useState('');
   const [nationalId, setNationalId] = useState('');
@@ -74,18 +70,6 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
         return;
       }
     }
-    if (!codeSent) {
-      const token = createVerificationToken();
-      setVerificationCode(token);
-      setCodeSent(true);
-      showAlert('كود التأكيد', `تم إرسال كود التأكيد إلى البريد/الهاتف المسجل.\nكود الاختبار الحالي: ${token}`);
-      return;
-    }
-    if (enteredCode.trim() !== verificationCode) {
-      showAlert('تنبيه', 'كود التأكيد غير صحيح. راجع الكود وأعد المحاولة.');
-      return;
-    }
-
     setLoading(true);
     try {
       const newUser = {
@@ -103,7 +87,7 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
         phone: phone.trim(),
         nationalId: role === 'doctor' ? nationalId.trim() : undefined,
         clinicLocation: role === 'doctor' ? clinicLocation.trim() : undefined,
-        emailVerified: true,
+        emailVerified: false,
         phoneVerified: true,
       };
 
@@ -112,24 +96,25 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
       if (savedUser) {
         if (role === 'doctor') {
           await addDoctorToCatalog(savedUser);
-          showAlert('تم استلام طلبك', `مرحباً ${savedUser.name}\nحسابك قيد المراجعة من قبل الإدارة.\nسيتم تفعيلك بعد الموافقة على بياناتك.`);
+          showAlert('تم إنشاء الحساب', `مرحباً ${savedUser.name}\nتم إرسال رابط تأكيد إلى بريدك الإلكتروني.\nبعد تأكيد البريد سيظل حساب الطبيب قيد مراجعة الإدارة.`);
           navigation.navigate('Login');
         } else {
-          setUser(savedUser);
-          setTimeout(() => {
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'MainTabs' as any }],
-            });
-          }, 100);
-          showAlert('نجاح', `تم إنشاء حسابك بنجاح\nمرحباً ${savedUser.name}`);
+          showAlert('تم إنشاء الحساب', `مرحباً ${savedUser.name}\nتم إرسال رابط تأكيد إلى بريدك الإلكتروني.\nافتح الإيميل واضغط رابط التأكيد ثم سجل الدخول.`);
+          navigation.navigate('Login');
         }
       } else {
         showAlert('خطأ', 'فشل في إنشاء الحساب. قد يكون البريد مسجلاً مسبقاً');
       }
     } catch (error) {
       console.error('Register error:', error);
-      showAlert('خطأ', 'حدث خطأ غير متوقع');
+      const code = (error as any)?.code;
+      if (code === 'auth/operation-not-allowed') {
+        showAlert('إعداد مطلوب', 'فعّل Email/Password من Firebase Authentication ثم جرّب مرة أخرى.');
+      } else if (code === 'auth/email-already-in-use') {
+        showAlert('خطأ', 'هذا البريد مسجل بالفعل.');
+      } else {
+        showAlert('خطأ', 'حدث خطأ غير متوقع');
+      }
     } finally {
       setLoading(false);
     }
@@ -169,10 +154,6 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
             <InputItem icon="envelope" placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" editable={!loading} />
             <InputItem icon="phone" placeholder="رقم الهاتف مع كود الدولة" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!loading} />
             <InputItem icon="lock" placeholder="كلمة المرور" value={password} onChangeText={setPassword} secureTextEntry editable={!loading} />
-            {codeSent && (
-              <InputItem icon="key" placeholder="كود التأكيد" value={enteredCode} onChangeText={setEnteredCode} keyboardType="number-pad" editable={!loading} />
-            )}
-
             {role === 'doctor' && (
               <View style={styles.doctorFields}>
                 <View style={styles.separator} />
@@ -193,7 +174,7 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
               onPress={handleRegister}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.registerBtnText}>{codeSent ? 'تأكيد وإنشاء الحساب' : 'إرسال كود التأكيد'}</Text>}
+              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.registerBtnText}>إنشاء الحساب وإرسال تأكيد البريد</Text>}
             </Pressable>
           </GlassCard>
 

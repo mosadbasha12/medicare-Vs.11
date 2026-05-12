@@ -1,7 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppUser, PasswordResetRequest } from '../types';
+import {
+  createUserWithEmailAndPassword,
+  reload,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth';
 import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { auth, db } from '../services/firebase';
 
 const USERS_KEY = '@medicare_users';
 const SESSION_KEY = '@medicare_session';
@@ -152,8 +159,21 @@ export const getUserByEmail = async (email: string): Promise<any | null> => {
 };
 
 export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { password: string }): Promise<AppUser | null> => {
-  const uid = `local_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+  let uid = `local_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   const hashedPassword = hashPassword(user.password);
+  let emailVerified = user.emailVerified;
+
+  if (FIREBASE_ENABLED) {
+    const existing = await getDocs(query(collection(db, 'users'), where('emailLower', '==', user.email.trim().toLowerCase())));
+    if (!existing.empty) return null;
+
+    const cred = await createUserWithEmailAndPassword(auth, user.email.trim(), user.password);
+    uid = cred.user.uid;
+    emailVerified = cred.user.emailVerified;
+    await sendEmailVerification(cred.user);
+    await signOut(auth);
+  }
+
   const newUser: AppUser = {
     uid,
     name: user.name,
@@ -169,14 +189,12 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     phone: user.phone,
     nationalId: user.nationalId,
     clinicLocation: user.clinicLocation,
-    emailVerified: user.emailVerified,
+    emailVerified,
     phoneVerified: user.phoneVerified,
     createdAt: new Date().toISOString(),
   };
   const userWithPass = { ...newUser, password: hashedPassword };
   if (FIREBASE_ENABLED) {
-    const existing = await getDocs(query(collection(db, 'users'), where('emailLower', '==', user.email.trim().toLowerCase())));
-    if (!existing.empty) return null;
     await setDoc(doc(db, 'users', uid), removeUndefinedValues({
       ...userWithPass,
       emailLower: user.email.trim().toLowerCase(),
@@ -192,11 +210,22 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
   return null;
 };
 
-export const findUserInDB = async (email: string, pass: string): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' }> => {
+export const findUserInDB = async (email: string, pass: string): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' } | { status: 'email_unverified' }> => {
   try {
     const hashedPass = hashPassword(pass);
     if (FIREBASE_ENABLED) {
       const trimmedEmail = email.trim().toLowerCase();
+      if (trimmedEmail !== ADMIN_EMAIL) {
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+        await reload(cred.user);
+
+        if (!cred.user.emailVerified) {
+          await sendEmailVerification(cred.user);
+          await signOut(auth);
+          return { status: 'email_unverified' };
+        }
+      }
+
       const q = query(collection(db, 'users'), where('emailLower', '==', trimmedEmail), where('password', '==', hashedPass));
       let snap = await getDocs(q);
 
@@ -209,6 +238,10 @@ export const findUserInDB = async (email: string, pass: string): Promise<AppUser
         const found = snap.docs[0].data() as any;
         if (found.isActive === false) return { status: 'inactive' };
         if (found.role === 'doctor' && found.isApproved === false) return { status: 'pending' };
+        if (trimmedEmail !== ADMIN_EMAIL && found.emailVerified === false) {
+          await setDoc(doc(db, 'users', found.uid || snap.docs[0].id), { emailVerified: true }, { merge: true });
+          found.emailVerified = true;
+        }
         const { password, emailLower, ...userWithoutPass } = found;
         await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userWithoutPass));
         return userWithoutPass;

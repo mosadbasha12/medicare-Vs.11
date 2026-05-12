@@ -58,6 +58,11 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
           setLoading(false);
           return;
         }
+        if ((foundUser as any).status === 'email_unverified') {
+          showAlert('تأكيد البريد مطلوب', 'تم إرسال رابط تأكيد جديد إلى بريدك الإلكتروني.\nافتح الإيميل واضغط رابط التأكيد ثم سجل الدخول مرة أخرى.');
+          setLoading(false);
+          return;
+        }
         const u = foundUser as any;
         setUser(u);
         setTimeout(() => {
