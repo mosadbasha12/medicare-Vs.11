@@ -1,11 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppUser, PasswordResetRequest } from '../types';
+import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 const USERS_KEY = '@medicare_users';
 const SESSION_KEY = '@medicare_session';
 const ADMIN_INIT_KEY = '@admin_initialized';
 const PASSWORD_RESET_KEY = '@password_reset_requests';
-const FIREBASE_ENABLED = process.env.EXPO_PUBLIC_FIREBASE_API_KEY !== 'YOUR_API_KEY_HERE';
+const FIREBASE_ENABLED = Boolean(
+  process.env.EXPO_PUBLIC_FIREBASE_API_KEY &&
+    process.env.EXPO_PUBLIC_FIREBASE_API_KEY !== 'YOUR_API_KEY_HERE'
+);
 
 export const ADMIN_EMAIL = 'admin@medicare.com';
 export const ADMIN_PASSWORD_LABEL = 'تم تعيين كلمة مرور مخصصة';
@@ -38,6 +43,26 @@ export const createVerificationToken = (): string =>
 
 export const initializeAdminAccount = async (): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      const adminDoc = {
+        uid: 'admin_001',
+        name: 'المسؤول الرئيسي',
+        email: ADMIN_EMAIL,
+        emailLower: ADMIN_EMAIL.toLowerCase(),
+        password: ADMIN_PASSWORD_HASH,
+        level: 'ذهبي',
+        role: 'admin',
+        isActive: true,
+        isApproved: true,
+        balance: 0,
+        phone: '',
+        emailVerified: true,
+        phoneVerified: true,
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'users', 'admin_001'), adminDoc, { merge: true });
+    }
+
     const alreadyInit = await AsyncStorage.getItem(ADMIN_INIT_KEY);
     if (alreadyInit) return true;
 
@@ -143,6 +168,14 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     createdAt: new Date().toISOString(),
   };
   const userWithPass = { ...newUser, password: hashedPassword };
+  if (FIREBASE_ENABLED) {
+    const existing = await getDocs(query(collection(db, 'users'), where('emailLower', '==', user.email.trim().toLowerCase())));
+    if (!existing.empty) return null;
+    await setDoc(doc(db, 'users', uid), {
+      ...userWithPass,
+      emailLower: user.email.trim().toLowerCase(),
+    });
+  }
   const success = await saveUserToStorage(userWithPass);
   if (success) {
     if (newUser.isActive && newUser.isApproved) {
@@ -155,9 +188,29 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
 
 export const findUserInDB = async (email: string, pass: string): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' }> => {
   try {
+    const hashedPass = hashPassword(pass);
+    if (FIREBASE_ENABLED) {
+      const trimmedEmail = email.trim().toLowerCase();
+      const q = query(collection(db, 'users'), where('emailLower', '==', trimmedEmail), where('password', '==', hashedPass));
+      let snap = await getDocs(q);
+
+      if (snap.empty) {
+        const legacyQ = query(collection(db, 'users'), where('email', '==', email.trim()), where('password', '==', hashedPass));
+        snap = await getDocs(legacyQ);
+      }
+
+      if (!snap.empty) {
+        const found = snap.docs[0].data() as any;
+        if (found.isActive === false) return { status: 'inactive' };
+        if (found.role === 'doctor' && found.isApproved === false) return { status: 'pending' };
+        const { password, emailLower, ...userWithoutPass } = found;
+        await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userWithoutPass));
+        return userWithoutPass;
+      }
+    }
+
     const existingStr = await AsyncStorage.getItem(USERS_KEY);
     const existing = existingStr ? JSON.parse(existingStr) : [];
-    const hashedPass = hashPassword(pass);
     const found = existing.find((u: any) => u.email === email && u.password === hashedPass);
     if (found) {
       if (found.isActive === false) {

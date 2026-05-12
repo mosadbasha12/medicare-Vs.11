@@ -1,6 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Appointment, LabResult, Prescription, Doctor } from '../types';
 import { COLORS } from '../theme';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { db } from '../services/firebase';
+
+const FIREBASE_ENABLED = Boolean(
+  process.env.EXPO_PUBLIC_FIREBASE_API_KEY &&
+    process.env.EXPO_PUBLIC_FIREBASE_API_KEY !== 'YOUR_API_KEY_HERE'
+);
 
 export interface DoctorSchedule {
   day: string;
@@ -33,6 +50,27 @@ const DEFAULT_DOCTORS: Doctor[] = [
 ];
 
 export const getAllDoctors = async (): Promise<Doctor[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'doctor'), where('isApproved', '==', true)));
+      const registeredDoctors = snap.docs.map((d) => {
+        const u = d.data() as any;
+        return {
+          id: u.uid || d.id,
+          name: u.name,
+          specialty: u.specialty || 'عام',
+          rating: 5.0,
+          emoji: '👨‍⚕️',
+          available: u.isActive !== false,
+          price: 60,
+        };
+      });
+      return [...DEFAULT_DOCTORS, ...registeredDoctors.filter((rd) => !DEFAULT_DOCTORS.some((d) => d.id === rd.id))];
+    } catch (error) {
+      console.error('Firebase getAllDoctors error:', error);
+    }
+  }
+
   const stored = await AsyncStorage.getItem('@doctors');
   let defaultDoctors: Doctor[] = stored ? JSON.parse(stored) : DEFAULT_DOCTORS;
 
@@ -75,6 +113,19 @@ export const searchDoctors = async (searchTerm: string): Promise<Doctor[]> => {
 
 export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'doctors', doctorUser.uid), {
+        id: doctorUser.uid,
+        name: doctorUser.name,
+        specialty: doctorUser.specialty || 'عام',
+        rating: 5.0,
+        emoji: '👨‍⚕️',
+        available: doctorUser.isApproved !== false,
+        price: 60,
+      }, { merge: true });
+      return true;
+    }
+
     const doctors = await getAllDoctors();
     const alreadyExists = doctors.find((d) => d.id === doctorUser.uid);
     if (alreadyExists) return true;
@@ -133,16 +184,47 @@ export const saveDoctorSchedule = async (doctorId: string, schedule: DoctorSched
 };
 
 export const getAllUsers = async (): Promise<any[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      return snap.docs.map((d) => {
+        const data = d.data() as any;
+        const { password, emailLower, ...safeUser } = data;
+        return { uid: data.uid || d.id, ...safeUser };
+      });
+    } catch (error) {
+      console.error('Firebase getAllUsers error:', error);
+    }
+  }
+
   const stored = await AsyncStorage.getItem('@medicare_users');
   return stored ? JSON.parse(stored) : [];
 };
 
 export const getUserAppointments = async (userId: string): Promise<Appointment[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'appointments'), where('userId', '==', userId)));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+    } catch (error) {
+      console.error('Firebase getUserAppointments error:', error);
+    }
+  }
+
   const stored = await AsyncStorage.getItem(`@appointments_${userId}`);
   return stored ? JSON.parse(stored) : [];
 };
 
 export const getDoctorAppointments = async (doctorId: string): Promise<DoctorAppointment[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'appointments'), where('doctorId', '==', doctorId)));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as DoctorAppointment));
+    } catch (error) {
+      console.error('Firebase getDoctorAppointments error:', error);
+    }
+  }
+
   const users = await getAllUsers();
   const allAppointments: (Appointment & { patientId: string; patientName: string })[] = [];
   for (const user of users) {
@@ -164,6 +246,23 @@ export const getDoctorAppointments = async (doctorId: string): Promise<DoctorApp
 };
 
 export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<boolean> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const users = await getAllUsers();
+      const patient = users.find((u) => u.uid === apt.userId);
+      await addDoc(collection(db, 'appointments'), {
+        ...apt,
+        patientId: apt.userId,
+        patientName: patient?.name || 'مريض',
+        createdAt: new Date().toISOString(),
+      });
+      return true;
+    } catch (error) {
+      console.error('Firebase createAppointment error:', error);
+      return false;
+    }
+  }
+
   const userId = apt.userId;
   const existing = await getUserAppointments(userId);
   const newApt = { ...apt, id: `apt_${Date.now()}` };
@@ -173,6 +272,16 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
 };
 
 export const updateAppointmentStatus = async (aptId: string, userId: string, status: Appointment['status']): Promise<boolean> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      await updateDoc(doc(db, 'appointments', aptId), { status });
+      return true;
+    } catch (error) {
+      console.error('Firebase updateAppointmentStatus error:', error);
+      return false;
+    }
+  }
+
   const stored = await AsyncStorage.getItem(`@appointments_${userId}`);
   if (!stored) return false;
   const appointments = JSON.parse(stored);
@@ -346,6 +455,11 @@ export const listenToMessages = (
 
 export const toggleUserActive = async (uid: string, isActive: boolean): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await updateDoc(doc(db, 'users', uid), { isActive });
+      return true;
+    }
+
     const stored = await AsyncStorage.getItem('@medicare_users');
     if (!stored) return false;
     const users = JSON.parse(stored);
@@ -361,6 +475,12 @@ export const toggleUserActive = async (uid: string, isActive: boolean): Promise<
 
 export const deleteUser = async (uid: string): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await deleteDoc(doc(db, 'users', uid));
+      await deleteDoc(doc(db, 'doctors', uid)).catch(() => undefined);
+      return true;
+    }
+
     const stored = await AsyncStorage.getItem('@medicare_users');
     if (!stored) return false;
     const users = JSON.parse(stored);
@@ -392,6 +512,11 @@ export const getPendingDoctors = async (): Promise<any[]> => {
 
 export const approveDoctor = async (uid: string): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await updateDoc(doc(db, 'users', uid), { isApproved: true, isActive: true });
+      return true;
+    }
+
     const stored = await AsyncStorage.getItem('@medicare_users');
     if (!stored) return false;
     const users = JSON.parse(stored);
@@ -408,6 +533,12 @@ export const approveDoctor = async (uid: string): Promise<boolean> => {
 
 export const rejectDoctor = async (uid: string): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await deleteDoc(doc(db, 'users', uid));
+      await deleteDoc(doc(db, 'doctors', uid)).catch(() => undefined);
+      return true;
+    }
+
     const stored = await AsyncStorage.getItem('@medicare_users');
     if (!stored) return false;
     const users = JSON.parse(stored);
@@ -431,6 +562,11 @@ export const updateUserProfile = async (
   updates: any
 ): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await updateDoc(doc(db, 'users', uid), updates);
+      return true;
+    }
+
     const stored = await AsyncStorage.getItem('@medicare_users');
     if (stored) {
       const users = JSON.parse(stored);
