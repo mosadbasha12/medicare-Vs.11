@@ -49,7 +49,7 @@ function showAlert(title: string, message: string, onOk?: () => void) {
 }
 
 export default function BookingScreen({ navigation, route }: any) {
-  const { user } = useUser();
+  const { user, setUser } = useUser();
   const doctorName = route?.params?.doctorName || 'الطبيب';
   const doctorId = route?.params?.doctorId || '';
   const doctorSpec = route?.params?.doctorSpec || '';
@@ -90,6 +90,7 @@ export default function BookingScreen({ navigation, route }: any) {
     setLoading(false);
 
     if (success) {
+      setUser({ ...user, consultationsCount: (user.consultationsCount ?? 0) + 1 });
       showAlert('تم الحجز', `تم حجز موعدك مع ${doctorName}\nالتاريخ: ${getArabicDate(selectedDate)}\nالوقت: ${selectedTime}`, () => {
         navigation.goBack();
       });

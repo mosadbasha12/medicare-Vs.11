@@ -292,6 +292,7 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
         patientName: patient?.name || 'مريض',
         createdAt: new Date().toISOString(),
       });
+      await incrementConsultationsCount(apt.userId);
       return true;
     } catch (error) {
       console.error('Firebase createAppointment error:', error);
