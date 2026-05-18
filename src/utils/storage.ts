@@ -5,6 +5,7 @@ import {
   GoogleAuthProvider,
   reload,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithCredential,
   signInWithPopup,
@@ -275,7 +276,7 @@ export const findUserInDB = async (email: string, pass: string): Promise<AppUser
 export const signInWithGoogleInDB = async (
   idToken?: string,
   accessToken?: string
-): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' }> => {
+): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' } | { status: 'google_patient_only' }> => {
   if (!FIREBASE_ENABLED || (!idToken && !accessToken)) return null;
 
   try {
@@ -335,6 +336,7 @@ export const signInWithGoogleInDB = async (
       };
     }
 
+    if (userData.role && userData.role !== 'user') return { status: 'google_patient_only' };
     if (userData.isActive === false) return { status: 'inactive' };
     if (userData.role === 'doctor' && userData.isApproved === false) return { status: 'pending' };
 
@@ -348,7 +350,7 @@ export const signInWithGoogleInDB = async (
   }
 };
 
-export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' }> => {
+export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' } | { status: 'google_patient_only' }> => {
   if (!FIREBASE_ENABLED) return null;
 
   try {
@@ -409,6 +411,7 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
       };
     }
 
+    if (userData.role && userData.role !== 'user') return { status: 'google_patient_only' };
     if (userData.isActive === false) return { status: 'inactive' };
     if (userData.role === 'doctor' && userData.isApproved === false) return { status: 'pending' };
 
@@ -422,7 +425,18 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
   }
 };
 
-export const createPasswordResetRequest = async (email: string): Promise<'not_found' | 'already_pending' | PasswordResetRequest> => {
+export const createPasswordResetRequest = async (email: string): Promise<'sent' | 'not_found' | 'already_pending' | PasswordResetRequest> => {
+  const cleanEmail = email.trim();
+  const emailLower = cleanEmail.toLowerCase();
+
+  if (FIREBASE_ENABLED) {
+    const snap = await getDocs(query(collection(db, 'users'), where('emailLower', '==', emailLower)));
+    if (snap.empty) return 'not_found';
+
+    await sendPasswordResetEmail(auth, cleanEmail);
+    return 'sent';
+  }
+
   const user = await getUserByEmail(email);
   if (!user) return 'not_found';
 

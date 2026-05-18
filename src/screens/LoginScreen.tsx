@@ -63,6 +63,10 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
             showAlert('قيد المراجعة', 'حسابك قيد المراجعة من الإدارة.\nسيتم إعلامك بعد الموافقة.');
             return;
           }
+          if ((foundUser as any).status === 'google_patient_only') {
+            showAlert('غير متاح للطبيب', 'تسجيل الدخول بجوجل متاح لحسابات المرضى فقط.\nالأطباء يسجلون بالبريد وكلمة المرور بعد موافقة الأدمن.');
+            return;
+          }
 
           const u = foundUser as any;
           setUser(u);
@@ -101,6 +105,10 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
           }
           if ((foundUser as any).status === 'pending') {
             showAlert('قيد المراجعة', 'حسابك قيد المراجعة من الإدارة.\nسيتم إعلامك بعد الموافقة.');
+            return;
+          }
+          if ((foundUser as any).status === 'google_patient_only') {
+            showAlert('غير متاح للطبيب', 'تسجيل الدخول بجوجل متاح لحسابات المرضى فقط.\nالأطباء يسجلون بالبريد وكلمة المرور بعد موافقة الأدمن.');
             return;
           }
 
@@ -213,6 +221,8 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
       const result = await createPasswordResetRequest(cleanEmail);
       if (result === 'not_found') {
         showAlert('لم يتم العثور على الحساب', 'لا يوجد حساب مسجل بهذا البريد الإلكتروني.');
+      } else if (result === 'sent') {
+        showAlert('تم إرسال الرابط', 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.\nافتح الإيميل واتبع الخطوات ثم سجل الدخول بكلمة المرور الجديدة.');
       } else if (result === 'already_pending') {
         showAlert('طلب موجود', 'يوجد طلب استعادة كلمة مرور قيد مراجعة الأدمن بالفعل.');
       } else {
