@@ -7,6 +7,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { createPasswordResetRequest, findUserInDB, isValidEmailFormat, signInWithGoogleInDB, signInWithGooglePopupInDB } from '../utils/storage';
 import { useUser } from '../context/UserContext';
+import { useLanguage } from '../context/LanguageContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -22,6 +23,7 @@ const showAlert = (title: string, message: string) => {
 };
 
 export default function LoginScreen({ navigation }: { navigation: any }) {
+  const { t } = useLanguage();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -156,11 +158,11 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
 
   const handleLogin = async () => {
     if (!email.trim()) {
-      showAlert('تنبيه', 'الرجاء إدخال البريد الإلكتروني');
+      showAlert(t('warning'), t('enterEmail'));
       return;
     }
     if (!password.trim()) {
-      showAlert('تنبيه', 'الرجاء إدخال كلمة المرور');
+      showAlert(t('warning'), t('enterPassword'));
       return;
     }
 
@@ -197,7 +199,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
         }, 100);
         showAlert('نجاح', `تم تسجيل الدخول بنجاح\nمرحباً ${u.name}`);
       } else {
-        showAlert('خطأ', 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        showAlert(t('error'), t('invalidLogin'));
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -210,11 +212,11 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
   const handleForgotPassword = async () => {
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      showAlert('تنبيه', 'اكتب البريد الإلكتروني أولاً ثم اضغط نسيت كلمة المرور.');
+      showAlert(t('warning'), t('emailFirst'));
       return;
     }
     if (!isValidEmailFormat(cleanEmail)) {
-      showAlert('تنبيه', 'صيغة البريد الإلكتروني غير صحيحة.');
+      showAlert(t('warning'), t('invalidEmail'));
       return;
     }
 
@@ -224,7 +226,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
       if (result === 'not_found') {
         showAlert('لم يتم العثور على الحساب', 'لا يوجد حساب مسجل بهذا البريد الإلكتروني.');
       } else if (result === 'sent') {
-        showAlert('تم إرسال الرابط', `تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.\nافتح الإيميل واتبع الخطوات ثم سجل الدخول بكلمة المرور الجديدة.${EMAIL_DELIVERY_HINT}`);
+        showAlert(t('resetSentTitle'), `${t('resetSentMessage')}\n\n${t('spamHint')}`);
       } else if (result === 'already_pending') {
         showAlert('طلب موجود', 'يوجد طلب استعادة كلمة مرور قيد مراجعة الأدمن بالفعل.');
       } else {
@@ -248,15 +250,15 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
         <View style={styles.logoBox}>
           <Text style={styles.emoji}>🏥</Text>
         </View>
-        <Text style={styles.title}>أهلاً بك مجدداً</Text>
-        <Text style={styles.subtitle}>الرجاء تسجيل الدخول للمتابعة</Text>
+        <Text style={styles.title}>{t('welcomeBack')}</Text>
+        <Text style={styles.subtitle}>{t('loginSubtitle')}</Text>
 
         <GlassCard style={styles.formCard}>
           <View style={styles.inputContainer}>
             <FontAwesome5 name="envelope" size={16} color={COLORS.textSecondary} style={styles.icon} />
             <TextInput
               style={styles.input}
-              placeholder="البريد الإلكتروني"
+              placeholder={t('email')}
               placeholderTextColor={COLORS.textSecondary}
               value={email}
               onChangeText={setEmail}
@@ -271,7 +273,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
             <FontAwesome5 name="lock" size={16} color={COLORS.textSecondary} style={styles.icon} />
             <TextInput
               style={styles.input}
-              placeholder="كلمة المرور"
+              placeholder={t('password')}
               placeholderTextColor={COLORS.textSecondary}
               value={password}
               onChangeText={setPassword}
@@ -287,7 +289,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
             onPress={handleForgotPassword}
             disabled={loading}
           >
-            <Text style={styles.forgotText}>نسيت كلمة المرور؟</Text>
+            <Text style={styles.forgotText}>{t('forgotPassword')}</Text>
           </TouchableOpacity>
 
           <Pressable
@@ -302,7 +304,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.loginBtnText}>تسجيل الدخول</Text>
+              <Text style={styles.loginBtnText}>{t('login')}</Text>
             )}
           </Pressable>
 
@@ -320,19 +322,19 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
             ) : (
               <>
                 <FontAwesome5 name="google" size={18} color={COLORS.textPrimary} style={styles.googleIcon} />
-                <Text style={styles.googleBtnText}>تسجيل الدخول باستخدام جوجل</Text>
+                <Text style={styles.googleBtnText}>{t('googleLogin')}</Text>
               </>
             )}
           </Pressable>
         </GlassCard>
 
         <View style={styles.signupRow}>
-          <Text style={styles.noAccountText}>ليس لديك حساب؟ </Text>
+          <Text style={styles.noAccountText}>{t('noAccount')} </Text>
           <Pressable
             style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
             onPress={() => navigation.navigate('Register')}
           >
-            <Text style={styles.signupText}>سجل الآن</Text>
+            <Text style={styles.signupText}>{t('registerNow')}</Text>
           </Pressable>
         </View>
       </View>

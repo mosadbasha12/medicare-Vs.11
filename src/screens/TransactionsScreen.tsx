@@ -5,9 +5,11 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserTransactions } from '../utils/localDataService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function TransactionsScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { user } = useUser();
+  const { t } = useLanguage();
   const [transactions, setTransactions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export default function TransactionsScreen({ navigation }: { navigation: { goBac
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>سجل المعاملات</Text>
+        <Text style={styles.headerTitle}>{t('transactions')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -34,7 +36,7 @@ export default function TransactionsScreen({ navigation }: { navigation: { goBac
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>لا توجد معاملات حالياً</Text>
+          <Text style={styles.emptyText}>{t('noTransactions')}</Text>
         }
         renderItem={({ item }) => (
           <GlassCard style={styles.card}>

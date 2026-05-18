@@ -5,6 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { updateUserProfile } from '../utils/localDataService';
+import { useLanguage } from '../context/LanguageContext';
 
 interface EditProfileScreenProps {
   navigation: {
@@ -16,6 +17,7 @@ const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export default function EditProfileScreen({ navigation }: EditProfileScreenProps) {
   const { user, setUser } = useUser();
+  const { t } = useLanguage();
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [weight, setWeight] = useState(String(user?.weight ?? 0));
@@ -65,27 +67,27 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>تعديل الملف الشخصي</Text>
+        <Text style={styles.headerTitle}>{t('editProfileTitle')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <GlassCard style={styles.card}>
-          <Text style={styles.label}>الاسم بالكامل</Text>
-          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="الاسم" placeholderTextColor={COLORS.textSecondary} editable={!loading} />
+          <Text style={styles.label}>{t('fullName')}</Text>
+          <TextInput style={styles.input} value={name} onChangeText={setName} placeholder={t('fullName')} placeholderTextColor={COLORS.textSecondary} editable={!loading} />
           
-          <Text style={styles.label}>البريد الإلكتروني</Text>
+          <Text style={styles.label}>{t('email')}</Text>
           <TextInput style={styles.input} value={user?.email} editable={false} placeholderTextColor={COLORS.textSecondary} keyboardType="email-address" />
           
-          <Text style={styles.label}>رقم الهاتف</Text>
+          <Text style={styles.label}>{t('phone')}</Text>
           <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="05XXXXXXXX" placeholderTextColor={COLORS.textSecondary} keyboardType="phone-pad" editable={!loading} />
 
           {showHealthFields && (
             <>
-              <Text style={styles.label}>الوزن (كج)</Text>
+              <Text style={styles.label}>{t('weightKg')}</Text>
               <TextInput style={styles.input} value={weight} onChangeText={setWeight} placeholder="0" placeholderTextColor={COLORS.textSecondary} keyboardType="numeric" editable={!loading} />
 
-              <Text style={styles.label}>فصيلة الدم</Text>
+              <Text style={styles.label}>{t('bloodType')}</Text>
               <View style={styles.bloodGrid}>
                 {BLOOD_TYPES.map((type) => {
                   const selected = bloodType === type;
@@ -101,7 +103,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
         </GlassCard>
 
         <TouchableOpacity style={[styles.saveBtn, loading && { opacity: 0.7 }]} onPress={handleSave} disabled={loading}>
-          {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>حفظ التغييرات</Text>}
+          {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>{t('saveChanges')}</Text>}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

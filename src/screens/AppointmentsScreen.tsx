@@ -6,6 +6,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
 import { getUserAppointments, cancelAppointment } from '../utils/localDataService';
 import type { Appointment } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -30,6 +31,7 @@ function showInfo(title: string, message: string) {
 
 export default function AppointmentsScreen() {
   const { user } = useUser();
+  const { t } = useLanguage();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
   const fetchAppointments = async () => {
@@ -43,13 +45,13 @@ export default function AppointmentsScreen() {
   }, [user?.uid]);
 
   const handleCancel = (aptId: string) => {
-    showConfirmation('تأكيد الإلغاء', 'هل أنت متأكد من إلغاء هذا الموعد؟', async () => {
+    showConfirmation(t('cancelConfirmTitle'), t('cancelConfirmMessage'), async () => {
       const success = await cancelAppointment(aptId, user!.uid);
       if (success) {
-        showInfo('تم', 'تم إلغاء الموعد بنجاح');
+        showInfo(t('done'), t('appointmentCancelled'));
         fetchAppointments();
       } else {
-        showInfo('خطأ', 'فشل في إلغاء الموعد');
+        showInfo(t('error'), t('appointmentCancelFailed'));
       }
     });
   };
@@ -60,13 +62,21 @@ export default function AppointmentsScreen() {
       Linking.openURL(room);
       return;
     }
-    showInfo('زيارة عيادة', `موعدك زيارة عيادة مع ${item.doctorName}\nالتاريخ: ${item.date}\nالوقت: ${item.time}`);
+    showInfo(t('clinicVisit'), `${t('clinicVisitDetails')} ${item.doctorName}\n${t('dateLabel')}: ${item.date}\n${t('timeLabel')}: ${item.time}`);
   };
+
+  const getStatusLabel = (status: Appointment['status']) => {
+    if (status === 'قادم') return t('upcoming');
+    if (status === 'مكتمل') return t('completed');
+    return t('cancelled');
+  };
+
+  const getTypeLabel = (type: Appointment['type']) => type === 'مكالمة فيديو' ? t('videoCall') : t('clinicVisit');
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>مواعيدي</Text>
+        <Text style={styles.headerTitle}>{t('myAppointments')}</Text>
       </View>
 
       <FlatList
@@ -74,14 +84,14 @@ export default function AppointmentsScreen() {
         keyExtractor={(i) => i.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>لا توجد مواعيد حالياً. احجز موعد من صفحة الأطباء</Text>
+          <Text style={styles.emptyText}>{t('noAppointments')}</Text>
         }
         renderItem={({ item }) => (
           <GlassCard style={styles.card}>
             <View style={styles.topRow}>
                <Text style={styles.docName}>{item.doctorName}</Text>
                <View style={[styles.statusBadge, item.status === 'قادم' ? styles.statusActive : item.status === 'مكتمل' ? styles.statusDone : styles.statusCancelled]}>
-                 <Text style={styles.statusText}>{item.status}</Text>
+                 <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
                </View>
             </View>
             <View style={styles.infoRow}>
@@ -95,16 +105,16 @@ export default function AppointmentsScreen() {
                </View>
                <View style={styles.infoItem}>
                  <FontAwesome5 name="video" size={14} color={COLORS.secondary} />
-                 <Text style={styles.infoText}>{item.type}</Text>
+                 <Text style={styles.infoText}>{getTypeLabel(item.type)}</Text>
                </View>
             </View>
             {item.status === 'قادم' && (
               <View style={styles.actionRow}>
                  <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancel(item.id)}>
-                   <Text style={styles.cancelText}>إلغاء الموعد</Text>
+                   <Text style={styles.cancelText}>{t('cancelAppointment')}</Text>
                  </TouchableOpacity>
                   <TouchableOpacity style={styles.joinBtn} onPress={() => handleJoin(item)}>
-                   <Text style={styles.joinText}>{item.type === 'مكالمة فيديو' ? 'انضمام الآن' : 'تفاصيل الزيارة'}</Text>
+                   <Text style={styles.joinText}>{item.type === 'مكالمة فيديو' ? t('joinNow') : t('visitDetails')}</Text>
                  </TouchableOpacity>
               </View>
             )}

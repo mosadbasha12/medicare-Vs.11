@@ -13,6 +13,7 @@ import {
 import { addDoctorToCatalog } from '../utils/localDataService';
 import { useUser } from '../context/UserContext';
 import type { UserRole } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 
 const EMAIL_DELIVERY_HINT = '\n\nإذا لم تجد الرسالة في البريد الوارد، راجع الرسائل غير المرغوب فيها (Junk/Spam).';
 
@@ -26,6 +27,7 @@ const showAlert = (title: string, message: string) => {
 };
 
 export default function RegisterScreen({ navigation }: { navigation: any }) {
+  const { t } = useLanguage();
   const [role, setRole] = useState<UserRole>('user');
   const [loading, setLoading] = useState(false);
   const { user } = useUser();
@@ -127,8 +129,8 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
-            <Text style={styles.title}>إنشاء حساب جديد</Text>
-            <Text style={styles.subtitle}>انضم إلى عائلة ميديكير برو اليوم</Text>
+            <Text style={styles.title}>{t('createAccount')}</Text>
+            <Text style={styles.subtitle}>{t('registerSubtitle')}</Text>
           </View>
 
           <View style={styles.roleSwitcher}>
@@ -138,7 +140,7 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
               disabled={loading}
             >
               <FontAwesome5 name="user" size={16} color={role === 'user' ? '#FFF' : COLORS.textSecondary} style={{ marginLeft: 8 }} />
-              <Text style={[styles.roleBtnText, role === 'user' && styles.roleBtnTextActive]}>مريض</Text>
+              <Text style={[styles.roleBtnText, role === 'user' && styles.roleBtnTextActive]}>{t('patientRole')}</Text>
             </Pressable>
             
             <Pressable 
@@ -147,23 +149,23 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
               disabled={loading}
             >
               <FontAwesome5 name="user-md" size={16} color={role === 'doctor' ? '#FFF' : COLORS.textSecondary} style={{ marginLeft: 8 }} />
-              <Text style={[styles.roleBtnText, role === 'doctor' && styles.roleBtnTextActive]}>طبيب</Text>
+              <Text style={[styles.roleBtnText, role === 'doctor' && styles.roleBtnTextActive]}>{t('doctorRole')}</Text>
             </Pressable>
           </View>
 
           <GlassCard style={styles.formCard}>
-            <InputItem icon="user" placeholder="الاسم بالكامل" value={name} onChangeText={setName} editable={!loading} />
-            <InputItem icon="envelope" placeholder="البريد الإلكتروني" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" editable={!loading} />
-            <InputItem icon="phone" placeholder="رقم الهاتف مع كود الدولة" value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!loading} />
-            <InputItem icon="lock" placeholder="كلمة المرور" value={password} onChangeText={setPassword} secureTextEntry editable={!loading} />
+            <InputItem icon="user" placeholder={t('fullName')} value={name} onChangeText={setName} editable={!loading} />
+            <InputItem icon="envelope" placeholder={t('email')} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" editable={!loading} />
+            <InputItem icon="phone" placeholder={t('phoneWithCode')} value={phone} onChangeText={setPhone} keyboardType="phone-pad" editable={!loading} />
+            <InputItem icon="lock" placeholder={t('password')} value={password} onChangeText={setPassword} secureTextEntry editable={!loading} />
             {role === 'doctor' && (
               <View style={styles.doctorFields}>
                 <View style={styles.separator} />
-                <Text style={styles.doctorSectionTitle}>بيانات المهنة</Text>
-                <InputItem icon="briefcase-medical" placeholder="التخصص الطبي" value={specialty} onChangeText={setSpecialty} editable={!loading} />
-                <InputItem icon="id-card" placeholder="رقم الهوية الوطنية" value={nationalId} onChangeText={setNationalId} editable={!loading} />
-                <InputItem icon="address-card" placeholder="رقم الكارت الطبي" value={medicalId} onChangeText={setMedicalId} editable={!loading} />
-                <InputItem icon="map-marker-alt" placeholder="موقع العيادة" value={clinicLocation} onChangeText={setClinicLocation} editable={!loading} />
+                <Text style={styles.doctorSectionTitle}>{t('professionData')}</Text>
+                <InputItem icon="briefcase-medical" placeholder={t('specialty')} value={specialty} onChangeText={setSpecialty} editable={!loading} />
+                <InputItem icon="id-card" placeholder={t('nationalId')} value={nationalId} onChangeText={setNationalId} editable={!loading} />
+                <InputItem icon="address-card" placeholder={t('medicalCard')} value={medicalId} onChangeText={setMedicalId} editable={!loading} />
+                <InputItem icon="map-marker-alt" placeholder={t('clinicLocation')} value={clinicLocation} onChangeText={setClinicLocation} editable={!loading} />
               </View>
             )}
 
@@ -176,17 +178,17 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
               onPress={handleRegister}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.registerBtnText}>إنشاء الحساب وإرسال تأكيد البريد</Text>}
+              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.registerBtnText}>{t('createAccountEmail')}</Text>}
             </Pressable>
           </GlassCard>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>لديك حساب بالفعل؟ </Text>
+            <Text style={styles.footerText}>{t('alreadyHaveAccount')} </Text>
             <Pressable
               style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
               onPress={() => navigation.navigate('Login')}
             >
-              <Text style={styles.loginText}>سجل دخول</Text>
+              <Text style={styles.loginText}>{t('signIn')}</Text>
             </Pressable>
           </View>
         </ScrollView>

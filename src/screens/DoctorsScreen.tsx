@@ -5,6 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { getAllDoctors, searchDoctors } from '../utils/localDataService';
 import type { Doctor } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 
 interface DoctorsScreenProps {
   navigation: {
@@ -14,6 +15,7 @@ interface DoctorsScreenProps {
 }
 
 export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
+  const { t } = useLanguage();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -47,14 +49,14 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>الأطباء المتاحون</Text>
+        <Text style={styles.headerTitle}>{t('availableDoctors')}</Text>
       </View>
 
       <View style={styles.searchContainer}>
         <FontAwesome5 name="search" size={16} color={COLORS.textSecondary} style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="ابحث عن طبيب أو تخصص..."
+          placeholder={t('searchDoctor')}
           placeholderTextColor={COLORS.textSecondary}
           value={searchTerm}
           onChangeText={handleSearch}
@@ -66,7 +68,7 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>لا يوجد أطباء مطابقين للبحث</Text>
+          <Text style={styles.emptyText}>{t('noDoctors')}</Text>
         }
         renderItem={({ item }) => (
           <GlassCard style={styles.card}>
@@ -93,7 +95,7 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
                     style={styles.bookButton}
                     onPress={() => navigation.navigate('Booking', { doctorId: item.id, doctorName: item.name, doctorSpec: item.specialty, doctorPrice: item.price })}
                 >
-                  <Text style={styles.bookButtonText}>حجز</Text>
+                  <Text style={styles.bookButtonText}>{t('book')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

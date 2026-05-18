@@ -5,6 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { updateUserBalance } from '../utils/storage';
+import { useLanguage } from '../context/LanguageContext';
 
 const showInfo = (title: string, message: string) => {
   if (Platform.OS === 'web') alert(`${title}\n${message}`);
@@ -13,6 +14,7 @@ const showInfo = (title: string, message: string) => {
 
 export default function PaymentScreen({ navigation }: any) {
   const { user, setUser } = useUser();
+  const { t } = useLanguage();
   const [selectedMethod, setSelectedMethod] = useState('visa');
   const [cards, setCards] = useState(['**** **** **** 4242', '**** **** **** 8899']);
 
@@ -39,20 +41,20 @@ export default function PaymentScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>طرق الدفع</Text>
+        <Text style={styles.headerTitle}>{t('paymentMethods')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <GlassCard style={styles.balanceCard}>
-           <Text style={styles.balanceLabel}>الرصيد المتاح</Text>
+           <Text style={styles.balanceLabel}>{t('availableBalance')}</Text>
            <Text style={styles.balanceVal}>{user?.balance.toFixed(2)} $</Text>
            <TouchableOpacity style={styles.topUpBtn} onPress={handleTopUp}>
-             <Text style={styles.topUpText}>شحن الرصيد</Text>
+             <Text style={styles.topUpText}>{t('topUpBalance')}</Text>
            </TouchableOpacity>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>البطاقات المسجلة</Text>
+        <Text style={styles.sectionTitle}>{t('savedCards')}</Text>
         
         {cards.map((card, index) => (
           <TouchableOpacity key={card} onPress={() => setSelectedMethod(card)}>
@@ -69,10 +71,10 @@ export default function PaymentScreen({ navigation }: any) {
 
          <TouchableOpacity style={styles.addCardBtn} onPress={handleAddCard}>
            <Ionicons name="add" size={24} color={COLORS.primaryLight} />
-           <Text style={styles.addCardText}>إضافة بطاقة جديدة</Text>
+           <Text style={styles.addCardText}>{t('addNewCard')}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>خيارات أخرى</Text>
+        <Text style={styles.sectionTitle}>{t('otherOptions')}</Text>
         <GlassCard style={styles.otherOption}>
            <TouchableOpacity style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1 }} onPress={() => setSelectedMethod('paypal')}>
              <FontAwesome5 name="paypal" size={20} color="#003087" />

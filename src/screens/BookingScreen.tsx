@@ -5,6 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { createAppointment } from '../utils/localDataService';
+import { useLanguage } from '../context/LanguageContext';
 
 const TIME_SLOTS = [
   '09:00 ص', '09:30 ص', '10:00 ص', '10:30 ص',
@@ -14,8 +15,8 @@ const TIME_SLOTS = [
 ];
 
 const APPOINTMENT_TYPES = [
-  { id: 'video', label: 'مكالمة فيديو', icon: 'video' },
-  { id: 'clinic', label: 'زيارة العيادة', icon: 'hospital' },
+  { id: 'video', labelKey: 'videoCall', icon: 'video' },
+  { id: 'clinic', labelKey: 'clinicAppointment', icon: 'hospital' },
 ];
 
 const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
@@ -72,7 +73,8 @@ function showAlert(title: string, message: string, onOk?: () => void) {
 
 export default function BookingScreen({ navigation, route }: any) {
   const { user, setUser } = useUser();
-  const doctorName = route?.params?.doctorName || 'الطبيب';
+  const { t } = useLanguage();
+  const doctorName = route?.params?.doctorName || t('doctor');
   const doctorId = route?.params?.doctorId || '';
   const doctorSpec = route?.params?.doctorSpec || '';
   const doctorPrice = route?.params?.doctorPrice || 50;
@@ -91,15 +93,15 @@ export default function BookingScreen({ navigation, route }: any) {
 
   const handleBook = async () => {
     if (!selectedDate) {
-      showAlert('تنبيه', 'يرجى اختيار التاريخ');
+      showAlert(t('warning'), t('selectDateWarning'));
       return;
     }
     if (!selectedTime) {
-      showAlert('تنبيه', 'يرجى اختيار الوقت');
+      showAlert(t('warning'), t('selectTimeWarning'));
       return;
     }
     if (!user?.uid) {
-      showAlert('خطأ', 'يجب تسجيل الدخول أولاً');
+      showAlert(t('error'), t('loginRequired'));
       return;
     }
 
@@ -118,11 +120,11 @@ export default function BookingScreen({ navigation, route }: any) {
 
     if (success) {
       setUser({ ...user, consultationsCount: (user.consultationsCount ?? 0) + 1 });
-      showAlert('تم الحجز', `تم حجز موعدك مع ${doctorName}\nالتاريخ: ${getArabicDate(selectedDate)}\nالوقت: ${selectedTime}`, () => {
+      showAlert(t('bookingSuccess'), `${t('bookingSuccess')} ${doctorName}\n${t('dateLabel')}: ${getArabicDate(selectedDate)}\n${t('timeLabel')}: ${selectedTime}`, () => {
         navigation.goBack();
       });
     } else {
-      showAlert('خطأ', 'فشل في إنشاء الموعد');
+      showAlert(t('error'), t('bookingFailed'));
     }
   };
 
@@ -132,7 +134,7 @@ export default function BookingScreen({ navigation, route }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>حجز موعد</Text>
+        <Text style={styles.headerTitle}>{t('bookAppointment')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -149,7 +151,7 @@ export default function BookingScreen({ navigation, route }: any) {
           </View>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>نوع الموعد</Text>
+        <Text style={styles.sectionTitle}>{t('appointmentType')}</Text>
         <View style={styles.typeRow}>
           {APPOINTMENT_TYPES.map((type) => (
             <TouchableOpacity
@@ -158,12 +160,12 @@ export default function BookingScreen({ navigation, route }: any) {
               onPress={() => setSelectedType(type.id)}
             >
               <FontAwesome5 name={type.icon as any} size={24} color={selectedType === type.id ? COLORS.primaryLight : COLORS.textSecondary} />
-              <Text style={[styles.typeLabel, selectedType === type.id && styles.typeLabelSelected]}>{type.label}</Text>
+              <Text style={[styles.typeLabel, selectedType === type.id && styles.typeLabelSelected]}>{t(type.labelKey as any)}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={styles.sectionTitle}>اختر التاريخ</Text>
+        <Text style={styles.sectionTitle}>{t('chooseDate')}</Text>
         <GlassCard style={styles.calendarCard}>
           <View style={styles.calendarHeader}>
             <TouchableOpacity style={styles.calendarArrow} onPress={() => setVisibleMonth(new Date(visibleMonth.getFullYear() - 1, visibleMonth.getMonth(), 1))}>
@@ -212,10 +214,10 @@ export default function BookingScreen({ navigation, route }: any) {
             })}
           </View>
 
-          <Text style={styles.selectedDateText}>{selectedDate ? getArabicDate(selectedDate) : 'اختر اليوم المناسب'}</Text>
+          <Text style={styles.selectedDateText}>{selectedDate ? getArabicDate(selectedDate) : t('chooseSuitableDay')}</Text>
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>اختر الوقت</Text>
+        <Text style={styles.sectionTitle}>{t('chooseTime')}</Text>
         <View style={styles.timeGrid}>
           {TIME_SLOTS.map((time) => (
             <TouchableOpacity
@@ -233,7 +235,7 @@ export default function BookingScreen({ navigation, route }: any) {
           onPress={handleBook}
           disabled={!selectedDate || !selectedTime || loading}
         >
-          <Text style={styles.bookBtnText}>{loading ? 'جاري الحجز...' : `تأكيد الحجز ${doctorPrice > 0 ? `(${doctorPrice}$)` : ''}`}</Text>
+          <Text style={styles.bookBtnText}>{loading ? t('bookingLoading') : `${t('confirmBooking')} ${doctorPrice > 0 ? `(${doctorPrice}$)` : ''}`}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

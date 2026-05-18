@@ -5,9 +5,11 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserResults } from '../utils/localDataService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function ResultsScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { user } = useUser();
+  const { t } = useLanguage();
   const [results, setResults] = useState<any[]>([]);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>نتائج التحاليل</Text>
+        <Text style={styles.headerTitle}>{t('labResults')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -34,7 +36,7 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>لا توجد نتائج</Text>
+          <Text style={styles.emptyText}>{t('noResults')}</Text>
         }
         renderItem={({ item }) => (
           <GlassCard style={styles.card}>
@@ -52,7 +54,7 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
             </View>
             <TouchableOpacity style={styles.downloadBtn}>
                <Ionicons name="download-outline" size={18} color={COLORS.primaryLight} />
-               <Text style={styles.downloadText}>تحميل التقرير (PDF)</Text>
+               <Text style={styles.downloadText}>{t('downloadReport')}</Text>
             </TouchableOpacity>
           </GlassCard>
         )}

@@ -5,9 +5,11 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserNotifications } from '../utils/localDataService';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function NotificationsScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { user } = useUser();
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export default function NotificationsScreen({ navigation }: { navigation: { goBa
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>التنبيهات</Text>
+        <Text style={styles.headerTitle}>{t('notifications')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -34,7 +36,7 @@ export default function NotificationsScreen({ navigation }: { navigation: { goBa
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>لا توجد تنبيهات</Text>
+          <Text style={styles.emptyText}>{t('noNotifications')}</Text>
         }
         renderItem={({ item }) => (
           <GlassCard style={styles.card}>

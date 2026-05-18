@@ -5,6 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserAppointments, getUserResults, getUserPrescriptions } from '../utils/localDataService';
+import { useLanguage } from '../context/LanguageContext';
 
 interface HomeScreenProps {
   navigation: {
@@ -14,6 +15,7 @@ interface HomeScreenProps {
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { user } = useUser();
+  const { t } = useLanguage();
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [resultsCount, setResultsCount] = useState(0);
   const [prescriptionsCount, setPrescriptionsCount] = useState(0);
@@ -44,8 +46,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             <Text style={styles.logoEmoji}>🏥</Text>
           </View>
           <View>
-            <Text style={styles.greeting}>مرحباً، {user?.name || 'مستخدم'} 👋</Text>
-            <Text style={styles.subGreeting}>كيف يمكننا مساعدتك اليوم؟</Text>
+            <Text style={styles.greeting}>{t('greetingPrefix')} {user?.name || t('userFallback')} 👋</Text>
+            <Text style={styles.subGreeting}>{t('homeSubtitle')}</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Notifications')}>
@@ -57,35 +59,35 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.gridContainer}>
-          <StatCard label="المواعيد" value={String(appointmentsCount)} icon="calendar-check" color={COLORS.primaryLight} bgColor={COLORS.primarySoft} onPress={() => navigation.navigate('المواعيد')} />
-          <StatCard label="النتائج" value={String(resultsCount)} icon="flask" color={COLORS.secondary} bgColor={COLORS.secondary + '22'} onPress={() => navigation.navigate('Results')} />
-          <StatCard label="الوصفات" value={String(prescriptionsCount)} icon="pills" color={COLORS.accentWarm} bgColor={COLORS.accentWarm + '22'} onPress={() => navigation.navigate('Prescriptions')} />
-          <StatCard label="المحفظة" value={`${user?.balance?.toFixed(0) || 0}$`} icon="wallet" color={COLORS.danger} bgColor="rgba(227, 26, 26, 0.15)" onPress={() => navigation.navigate('Payment')} />
+          <StatCard label={t('appointments')} value={String(appointmentsCount)} icon="calendar-check" color={COLORS.primaryLight} bgColor={COLORS.primarySoft} onPress={() => navigation.navigate('المواعيد')} />
+          <StatCard label={t('results')} value={String(resultsCount)} icon="flask" color={COLORS.secondary} bgColor={COLORS.secondary + '22'} onPress={() => navigation.navigate('Results')} />
+          <StatCard label={t('prescriptions')} value={String(prescriptionsCount)} icon="pills" color={COLORS.accentWarm} bgColor={COLORS.accentWarm + '22'} onPress={() => navigation.navigate('Prescriptions')} />
+          <StatCard label={t('wallet')} value={`${user?.balance?.toFixed(0) || 0}$`} icon="wallet" color={COLORS.danger} bgColor="rgba(227, 26, 26, 0.15)" onPress={() => navigation.navigate('Payment')} />
         </View>
 
         <View style={styles.gradientCard}>
           <View style={styles.gradientCardHeader}>
             <Text style={styles.gradientCardEmoji}>💡</Text>
             <View style={styles.gradientCardTexts}>
-              <Text style={styles.gradientCardTitle}>نصيحة اليوم الصحية</Text>
-              <Text style={styles.gradientCardDesc}>شرب 8 أكواب من الماء يومياً يساعد في الحفاظ على نشاط دورتك الدموية.</Text>
+              <Text style={styles.gradientCardTitle}>{t('healthTipTitle')}</Text>
+              <Text style={styles.gradientCardDesc}>{t('healthTipDesc')}</Text>
             </View>
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>إجراءات سريعة</Text>
+        <Text style={styles.sectionTitle}>{t('quickActions')}</Text>
         <View style={styles.quickActionsContainer}>
-          <QuickAction icon="user-md" label="طبيب" onPress={() => navigation.navigate('الأطباء')} />
-          <QuickAction icon="comments" label="دردشة" onPress={() => navigation.navigate('Chat', { doctorName: 'اختر طبيب' })} />
-          <QuickAction icon="vial" label="النتائج" onPress={() => navigation.navigate('Results')} />
-          <QuickAction icon="first-aid" label="طوارئ" onPress={() => navigation.navigate('Emergency')} />
+          <QuickAction icon="user-md" label={t('doctor')} onPress={() => navigation.navigate('الأطباء')} />
+          <QuickAction icon="comments" label={t('chat')} onPress={() => navigation.navigate('Chat', { doctorName: t('doctor') })} />
+          <QuickAction icon="vial" label={t('results')} onPress={() => navigation.navigate('Results')} />
+          <QuickAction icon="first-aid" label={t('emergency')} onPress={() => navigation.navigate('Emergency')} />
         </View>
 
-        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>نظرة عامة على صحتك</Text>
+        <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('healthOverview')}</Text>
         <GlassCard style={{ marginBottom: 120 }}>
-           <HealthMetric label="معدل النبض" value="72 bpm" percent={70} color={COLORS.danger} />
-           <HealthMetric label="ضغط الدم" value="120/80" percent={60} color={COLORS.secondary} />
-           <HealthMetric label="نسبة السكر" value="95 mg/dl" percent={85} color={COLORS.accentWarm} />
+           <HealthMetric label={t('pulseRate')} value="72 bpm" percent={70} color={COLORS.danger} />
+           <HealthMetric label={t('bloodPressure')} value="120/80" percent={60} color={COLORS.secondary} />
+           <HealthMetric label={t('bloodSugar')} value="95 mg/dl" percent={85} color={COLORS.accentWarm} />
         </GlassCard>
 
       </ScrollView>
