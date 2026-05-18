@@ -18,25 +18,47 @@ const APPOINTMENT_TYPES = [
   { id: 'clinic', label: 'زيارة العيادة', icon: 'hospital' },
 ];
 
+const MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+const DAY_NAMES = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
 function getArabicDate(date: Date): string {
-  const months = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
-  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-function getWeekDates(): { date: Date; label: string; dayName: string }[] {
-  const dates = [];
-  const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-  const today = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    dates.push({
-      date: d,
-      dayName: dayNames[d.getDay()],
-      label: `${d.getDate()}/${d.getMonth() + 1}`,
-    });
-  }
-  return dates;
+function getMonthDates(monthDate: Date): Date[] {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  return Array.from({ length: totalDays }, (_, index) => new Date(year, month, index + 1));
+}
+
+function isSameDate(first: Date | null, second: Date): boolean {
+  if (!first) return false;
+  return (
+    first.getFullYear() === second.getFullYear() &&
+    first.getMonth() === second.getMonth() &&
+    first.getDate() === second.getDate()
+  );
+}
+
+function getYearOptions(currentYear: number): number[] {
+  const start = currentYear - 2;
+  return Array.from({ length: 5 }, (_, index) => start + index);
+}
+
+function getMonthLabel(date: Date): string {
+  return `${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function getShortDayName(date: Date): string {
+  const name = DAY_NAMES[date.getDay()];
+  if (name === 'الإثنين') return 'إث';
+  if (name === 'الثلاثاء') return 'ثل';
+  if (name === 'الأربعاء') return 'أر';
+  if (name === 'الخميس') return 'خم';
+  if (name === 'الجمعة') return 'جم';
+  if (name === 'السبت') return 'سب';
+  return 'أح';
 }
 
 function showAlert(title: string, message: string, onOk?: () => void) {
@@ -58,9 +80,14 @@ export default function BookingScreen({ navigation, route }: any) {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [selectedType, setSelectedType] = useState<string>('video');
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [loading, setLoading] = useState(false);
 
-  const weekDates = getWeekDates();
+  const monthDates = getMonthDates(visibleMonth);
+  const yearOptions = getYearOptions(visibleMonth.getFullYear());
 
   const handleBook = async () => {
     if (!selectedDate) {
@@ -137,18 +164,56 @@ export default function BookingScreen({ navigation, route }: any) {
         </View>
 
         <Text style={styles.sectionTitle}>اختر التاريخ</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateScroll} contentContainerStyle={styles.dateContainer}>
-          {weekDates.map((item, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[styles.dateCard, selectedDate?.getTime() === item.date.getTime() && styles.dateCardSelected]}
-              onPress={() => setSelectedDate(item.date)}
-            >
-              <Text style={[styles.dateDayName, selectedDate?.getTime() === item.date.getTime() && styles.dateDayNameSelected]}>{item.dayName}</Text>
-              <Text style={[styles.dateDay, selectedDate?.getTime() === item.date.getTime() && styles.dateDaySelected]}>{item.label}</Text>
+        <GlassCard style={styles.calendarCard}>
+          <View style={styles.calendarHeader}>
+            <TouchableOpacity style={styles.calendarArrow} onPress={() => setVisibleMonth(new Date(visibleMonth.getFullYear() - 1, visibleMonth.getMonth(), 1))}>
+              <Ionicons name="play-skip-forward" size={16} color={COLORS.textPrimary} />
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+            <TouchableOpacity style={styles.calendarArrow} onPress={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() - 1, 1))}>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <Text style={styles.calendarTitle}>{getMonthLabel(visibleMonth)}</Text>
+            <TouchableOpacity style={styles.calendarArrow} onPress={() => setVisibleMonth(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 1))}>
+              <Ionicons name="chevron-back" size={20} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.calendarArrow} onPress={() => setVisibleMonth(new Date(visibleMonth.getFullYear() + 1, visibleMonth.getMonth(), 1))}>
+              <Ionicons name="play-skip-back" size={16} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.yearContainer}>
+            {yearOptions.map((year) => {
+              const selected = year === visibleMonth.getFullYear();
+              return (
+                <TouchableOpacity
+                  key={year}
+                  style={[styles.yearOption, selected && styles.yearOptionSelected]}
+                  onPress={() => setVisibleMonth(new Date(year, visibleMonth.getMonth(), 1))}
+                >
+                  <Text style={[styles.yearOptionText, selected && styles.yearOptionTextSelected]}>{year}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.dateContainer}>
+            {monthDates.map((day) => {
+              const selected = isSameDate(selectedDate, day);
+              return (
+                <TouchableOpacity
+                  key={`${day.getFullYear()}-${day.getMonth()}-${day.getDate()}`}
+                  style={[styles.dateCard, selected && styles.dateCardSelected]}
+                  onPress={() => setSelectedDate(day)}
+                >
+                  <Text style={[styles.dateDayName, selected && styles.dateDayNameSelected]}>{getShortDayName(day)}</Text>
+                  <Text style={[styles.dateDay, selected && styles.dateDaySelected]}>{day.getDate()}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={styles.selectedDateText}>{selectedDate ? getArabicDate(selectedDate) : 'اختر اليوم المناسب'}</Text>
+        </GlassCard>
 
         <Text style={styles.sectionTitle}>اختر الوقت</Text>
         <View style={styles.timeGrid}>
@@ -193,14 +258,23 @@ const styles = StyleSheet.create({
   typeCardSelected: { borderColor: COLORS.primaryLight, backgroundColor: COLORS.primarySofter },
   typeLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: 'bold' },
   typeLabelSelected: { color: COLORS.primaryLight },
-  dateScroll: { marginBottom: 24 },
-  dateContainer: { gap: 12 },
-  dateCard: { width: 72, paddingVertical: 14, paddingHorizontal: 8, borderRadius: 16, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, alignItems: 'center', gap: 6 },
+  calendarCard: { padding: 16, marginBottom: 24 },
+  calendarHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  calendarArrow: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor },
+  calendarTitle: { flex: 1, color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
+  yearContainer: { flexDirection: 'row-reverse', gap: 8, paddingBottom: 12 },
+  yearOption: { minWidth: 68, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor },
+  yearOptionSelected: { borderColor: COLORS.primaryLight, backgroundColor: COLORS.primarySofter },
+  yearOptionText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: 'bold' },
+  yearOptionTextSelected: { color: COLORS.primaryLight },
+  dateContainer: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  dateCard: { width: '13.2%', minWidth: 44, paddingVertical: 10, paddingHorizontal: 4, borderRadius: 12, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, alignItems: 'center', gap: 4 },
   dateCardSelected: { borderColor: COLORS.primaryLight, backgroundColor: COLORS.primarySofter },
   dateDayName: { color: COLORS.textSecondary, fontSize: 11 },
   dateDayNameSelected: { color: COLORS.primaryLight },
   dateDay: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold' },
   dateDaySelected: { color: COLORS.primaryLight },
+  selectedDateText: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 14 },
   timeGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10, marginBottom: 32 },
   timeCard: { width: '30%', paddingVertical: 12, borderRadius: 12, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, alignItems: 'center' },
   timeCardSelected: { borderColor: COLORS.primaryLight, backgroundColor: COLORS.primarySofter },
