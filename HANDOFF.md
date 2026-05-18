@@ -1,35 +1,55 @@
 # Medicare Project Handoff
 
-Last updated: 2026-05-12
+Last updated: 2026-05-18
 
-## Current Goal
+This file summarizes the current state of the Medicare Expo/React Native project so another developer can continue safely.
 
-This Expo/React Native project is being prepared to run as:
+## Project
 
-- Web app on Netlify
-- Android APK distributed outside Google Play
-- iPhone test app installed through Sideloadly
-
-The important recent fix was moving shared data away from device-only `AsyncStorage` toward Firebase Firestore, so users, doctors, admin, and the web app can see the same data.
-
-## Project Path
-
-Current local project folder:
+Local project path:
 
 ```text
 C:\Users\moham\Downloads\medicare Vs.12
 ```
 
-Git remote:
+GitHub repo:
 
 ```text
 https://github.com/mosadbasha12/medicare-Vs.11.git
 ```
 
-Main branch:
+Branch:
 
 ```text
 main
+```
+
+Production web URL:
+
+```text
+https://medicare-26.netlify.app/
+```
+
+Tech stack:
+
+- Expo SDK 54
+- React Native / React Native Web
+- Firebase Auth
+- Firestore
+- Netlify web hosting
+- GitHub Actions for APK / IPA builds
+- EAS Update for JS-only app updates
+
+## Recent Commits
+
+```text
+fa72538 Limit Google sign in to patients and fix password reset
+841f4c7 Fix Google sign in on web
+78f4204 Add Google sign in
+f2e5dd5 Enable Firebase email verification
+102c1f6 Fix Firebase user registration payload
+ad68152 Pass Firebase config to native builds
+5b10950 Use Firebase for shared users and appointments
 ```
 
 ## Firebase
@@ -40,13 +60,13 @@ Firebase project:
 medicare-bae8a
 ```
 
-Firestore database location:
+Firestore location:
 
 ```text
 eur3
 ```
 
-Web Firebase config currently used:
+Firebase client env values used by the app:
 
 ```env
 EXPO_PUBLIC_FIREBASE_API_KEY=AIzaSyA0CsuITaLJX6ujILeedBtEWzvcsDOx_0M
@@ -55,21 +75,44 @@ EXPO_PUBLIC_FIREBASE_PROJECT_ID=medicare-bae8a
 EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=medicare-bae8a.firebasestorage.app
 EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=1022689386382
 EXPO_PUBLIC_FIREBASE_APP_ID=1:1022689386382:web:65ef1cebb6818cc5c4cedf
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=1022689386382-ept8g808scof7lfo80qmcqhpkrbh8ppb.apps.googleusercontent.com
 ```
 
-These values are public client config, not service-account secrets.
+These are public client config values, not service-account secrets.
 
-They were added to:
+They should exist in:
 
 - Local `.env`
-- GitHub Actions repository secrets
 - Netlify environment variables
+- GitHub Actions repository secrets
 
-Do not commit `.env`; it is ignored.
+Do not commit `.env`.
+
+## Firebase Authentication
+
+Enabled providers needed:
+
+- Email/Password
+- Google
+
+Authorized domains should include:
+
+```text
+medicare-26.netlify.app
+```
+
+Current auth behavior:
+
+- Normal patient/doctor registration uses Email/Password.
+- Email verification is sent after registration.
+- Login blocks unverified non-admin users and sends a new verification email.
+- Google login is allowed for patients only.
+- Doctors must register using the normal form, fill their professional data, then wait for admin approval.
+- Forgot password now uses Firebase `sendPasswordResetEmail`, so users receive a real reset link by email.
 
 ## Firestore Rules
 
-Current suggested temporary rules are:
+Current temporary rules are permissive for the main collections:
 
 ```js
 rules_version = '2';
@@ -96,7 +139,7 @@ service cloud.firestore {
 }
 ```
 
-These are still not production-secure. They are only a temporary middle step after test mode. A future developer should implement real auth-based rules.
+Important: these rules are not production-secure. A future developer must replace them with authenticated role-based rules.
 
 ## Admin Account
 
@@ -112,19 +155,19 @@ Admin password:
 Mm20121011#
 ```
 
-The password is not stored as plaintext in code. The current hash is:
+Password hash stored in Firestore/code:
 
 ```text
 hashed_l4y4l7_11
 ```
 
-The admin Firestore document should exist at:
+Admin Firestore document:
 
 ```text
 users/admin_001
 ```
 
-Required fields:
+Expected fields:
 
 ```text
 uid: admin_001
@@ -143,96 +186,106 @@ phoneVerified: true
 createdAt: 2026-05-12
 ```
 
-## What Was Changed Recently
+## Main Files Changed
 
-Important files changed:
+`src/utils/storage.ts`
 
-- `src/utils/storage.ts`
-  - Added Firebase/Firestore-backed user registration and login.
-  - Creates/updates admin document when possible.
-  - Removes `undefined` fields before writing users to Firestore.
-  - Admin password is stored as hash, not plaintext.
+- Handles Firebase Auth registration/login.
+- Sends email verification.
+- Sends real password reset emails.
+- Handles Google login for patients only.
+- Creates/updates user documents in Firestore.
+- Initializes the admin document.
+- Keeps AsyncStorage as local session/fallback.
 
-- `src/utils/localDataService.ts`
-  - Added Firebase-backed shared data for:
-    - users
-    - doctors
-    - appointments
-    - appointment status updates
-    - admin user activation/deletion
-    - doctor approval/rejection
-  - Falls back to AsyncStorage if Firebase config is missing.
+`src/screens/LoginScreen.tsx`
 
-- `.github/workflows/android-apk.yml`
-  - Builds Android APK through EAS.
-  - Reads Firebase values from GitHub repository secrets.
+- Email/password login.
+- Google login button.
+- Forgot password flow.
+- Blocks inactive/pending/unverified users with Arabic alerts.
+- Shows a clear message if a doctor tries Google login.
 
-- `.github/workflows/ios-unsigned-ipa.yml`
-  - Builds an iOS IPA artifact for Sideloadly testing.
-  - Reads Firebase values from GitHub repository secrets.
-  - Adds ad-hoc codesign before packaging.
+`src/screens/RegisterScreen.tsx`
 
-- `netlify.toml`
-  - Builds web app for Netlify.
-  - Copies redirects and favicon into `dist`.
+- Patient registration.
+- Doctor registration.
+- Doctor fields currently required:
+  - specialty
+  - nationalId
+  - medicalId
+  - clinicLocation
+- Doctor accounts are created with `isApproved: false`.
+- Admin approval is required before doctor login works.
 
-- `public/_redirects`
-  - SPA fallback:
-    ```text
-    /* /index.html 200
-    ```
+`src/utils/localDataService.ts`
 
-- `scripts/patch-web-head.cjs`
-  - Ensures favicon links are injected into web `index.html`.
+- Firestore-backed shared data for:
+  - users
+  - doctors
+  - appointments
+  - appointment status updates
+  - admin user activation/deletion
+  - doctor approval/rejection
 
-- `update.bat`
-  - Adds, commits, pushes, then runs EAS Update.
+`netlify.toml`
 
-## Hosting
+- Builds the web app for Netlify.
+- Copies redirects/favicon assets.
 
-Netlify URL:
+`.github/workflows/android-apk.yml`
+
+- Builds Android APK through GitHub Actions/EAS.
+
+`.github/workflows/ios-unsigned-ipa.yml`
+
+- Builds unsigned/ad-hoc IPA artifact for Sideloadly testing.
+
+`update.bat`
+
+- Adds files, commits, pushes, then runs EAS Update.
+
+## Web Deployment
+
+Netlify project:
 
 ```text
-https://medicare-26.netlify.app/
+medicare-26
 ```
 
-Netlify must have the Firebase environment variables listed above.
-
-When env vars change, use:
+After any code or env change:
 
 ```text
-Deploys > Trigger deploy > Deploy project without cache
+Netlify > Deploys > Trigger deploy > Deploy project without cache
 ```
 
-## Builds
+If Google login fails:
 
-GitHub Actions workflows:
+1. Make sure Google provider is enabled in Firebase Authentication.
+2. Make sure `medicare-26.netlify.app` is in Firebase authorized domains.
+3. Make sure `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` exists in Netlify env vars.
+4. Redeploy without cache.
 
-- `Build Android APK`
-- `Build unsigned iOS IPA`
-- `Deploy Web App`
+## Android / iPhone Builds
 
 Android:
 
-1. Run `Build Android APK`.
-2. Download artifact `medicare-apk`.
-3. Extract and install `medicare.apk`.
+1. Run GitHub Action `Build Android APK`.
+2. Download artifact.
+3. Install the APK.
 
 iPhone:
 
-1. Run `Build unsigned iOS IPA`.
-2. Download artifact `medicare-ios-unsigned-ipa`.
-3. Extract `medicare-unsigned.ipa`.
-4. Install with Sideloadly.
-5. Enable Developer Mode on iPhone if prompted.
+1. Run GitHub Action `Build unsigned iOS IPA`.
+2. Download artifact.
+3. Install with Sideloadly.
+4. Enable Developer Mode on iPhone.
 
-Free iPhone sideloading is not permanent. It may require refresh/reinstall about every 7 days.
+Free iPhone sideloading may need reinstall/refresh after about 7 days.
 
 ## Updates
 
-The project has `expo-updates` configured.
-
-For normal JS-only updates:
+For JS-only updates:
 
 ```powershell
 .\update.bat
@@ -245,55 +298,81 @@ This does:
 3. `git push`
 4. `npx.cmd eas update --branch production --message "..."`
 
-Important: existing installed apps must be built after `expo-updates` and Firebase config were added. Older APK/IPA builds will not receive the current shared-data behavior correctly.
+Native changes still require a fresh APK/IPA. Examples:
 
-Native changes still require a new APK/IPA, for example:
-
-- New native library
+- Adding native libraries
 - Permission changes
-- Icon/splash changes
-- Firebase config first-time native build
-- Package/bundle identifier changes
+- App icon/splash changes
+- Package/bundle ID changes
+- First-time Firebase/native config changes
 
-## Current Status
+## Current Completed Behavior
 
-Web:
+- Web app works on Netlify.
+- Firebase env values are connected.
+- Admin login works after Firestore admin document exists.
+- Patient registration sends email verification.
+- Patient login requires verified email.
+- Forgot password sends a Firebase reset email.
+- Google login works through Firebase popup on web and is intended for patients only.
+- Doctor registration requires professional data.
+- Doctor accounts wait for admin approval.
+- Users/doctors/appointments are shared through Firestore instead of device-only AsyncStorage.
 
-- Netlify is deployed.
-- Firebase config was added to Netlify.
-- Admin login was fixed after creating `users/admin_001`.
-- User registration had an `undefined` Firestore payload bug; fixed by filtering undefined values.
+## Not Yet Finished / Important Next Tasks
 
-Android:
+The latest requested profile changes have not been implemented yet:
 
-- A new APK build should be generated from GitHub Actions after the Firebase fixes.
-- Users must install that new APK to be connected to Firestore.
+- Patient weight should default to `0`.
+- User should be able to tap weight and edit it manually.
+- Blood type should default to empty.
+- User should be able to choose blood type from a dropdown:
+  - A+
+  - A-
+  - B+
+  - B-
+  - AB+
+  - AB-
+  - O+
+  - O-
+- Consultations count should default to `0`.
+- Consultations count should increase automatically whenever the patient creates a doctor consultation/appointment.
 
-iPhone:
+Recommended implementation locations:
 
-- A new IPA should be generated from GitHub Actions after the Firebase fixes.
-- Install with Sideloadly.
+- Add fields to `AppUser` in `src/types/index.ts`:
+  - `weight?: number`
+  - `bloodType?: string`
+  - `consultationsCount?: number`
+- Add default values in `saveUserToDB` and Google user creation in `src/utils/storage.ts`.
+- Update profile UI in `src/screens/ProfileScreen.tsx`.
+- Increment consultation count when appointment/consultation is created in `src/utils/localDataService.ts` or booking flow.
 
-## Known Technical Debt
+Other technical debt:
 
-- Firestore rules are still too open for production.
-- Password handling is not production-grade. It uses a simple local hash in frontend code.
-- Proper Firebase Auth should replace custom password storage.
-- Some features still use local storage defaults/fallbacks:
-  - results
-  - prescriptions
-  - prescription orders
-  - transactions
-  - notifications
+- Firestore rules are too open.
+- Password hash for admin/custom auth is frontend-side and not production-grade.
+- Some app areas may still use AsyncStorage/local defaults:
   - chat
+  - notifications
+  - prescriptions
+  - lab results
+  - transactions
   - doctor schedules
-- The highest priority shared flows are now users/doctors/appointments/admin views.
+- Android/iOS Google sign-in may need extra native client IDs and SHA fingerprints. Web Google login was the main tested path.
 
-## Recommended Next Steps
+## Recommended Next Developer Flow
 
-1. Finish testing web registration, login, booking, admin view, and doctor view.
-2. Build and install fresh Android APK and iOS IPA.
-3. Test the same patient booking from web and verify it appears on Android/iPhone/admin.
-4. Move chat and prescriptions to Firestore next.
-5. Replace custom auth with Firebase Auth.
+1. Pull latest `main`.
+2. Run:
+
+```powershell
+npm install
+npx.cmd tsc --noEmit
+```
+
+3. Verify `.env` has all Firebase and Google values.
+4. Test web login/register/reset/Google login.
+5. Implement the profile fields request.
 6. Harden Firestore rules.
+7. Build fresh APK/IPA after any native-impacting change.
