@@ -79,9 +79,7 @@ const TabNavigator = () => {
 export default function AppNavigator() {
   const { user, isLoading } = useUser();
   const navKey = user ? `auth-${user.uid}` : 'no-auth';
-  const initialRouteName = user?.role === 'admin' || user?.role === 'owner'
-    ? 'Admin'
-    : user?.role === 'doctor'
+  const initialRouteName = user?.role === 'doctor'
       ? 'DoctorDashboard'
       : user
         ? 'MainTabs'

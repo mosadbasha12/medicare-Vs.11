@@ -3,6 +3,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 export type UserLevel = 'برونزي' | 'فضي' | 'ذهبي';
 export type UserRole = 'user' | 'admin' | 'doctor' | 'owner';
+export type AdminPermission = 'approveDoctors' | 'manageUsers' | 'manageDoctors';
 export type UserGender = 'male' | 'female';
 
 export interface AppUser {
@@ -14,6 +15,7 @@ export interface AppUser {
   balance: number;
   isActive: boolean;
   isApproved: boolean;
+  adminPermissions?: AdminPermission[];
   specialty?: string;
   medicalId?: string;
   patientsCount?: number;

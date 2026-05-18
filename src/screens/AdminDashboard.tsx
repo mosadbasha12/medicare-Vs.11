@@ -3,10 +3,10 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Swi
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission } from '../utils/localDataService';
-import { clearSession, getPasswordResetRequests, getPermissionLabel, resolvePasswordResetRequest } from '../utils/storage';
+import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions } from '../utils/localDataService';
+import { clearSession, getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
 import { useUser } from '../context/UserContext';
-import type { PasswordResetRequest } from '../types';
+import type { AdminPermission } from '../types';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -34,10 +34,24 @@ export default function AdminDashboard({ navigation }: any) {
   const [stats, setStats] = useState({ totalUsers: 0, totalDoctors: 0, totalAppointments: 0, totalPatients: 0, pendingDoctors: 0 });
   const [users, setUsers] = useState<any[]>([]);
   const [pendingDoctors, setPendingDoctors] = useState<any[]>([]);
-  const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'resets'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors'>('overview');
   const [loading, setLoading] = useState(true);
   const isOwner = user?.role === 'owner';
+  const adminPermissions = user?.adminPermissions || ['approveDoctors'];
+  const canApproveDoctors = isOwner || adminPermissions.includes('approveDoctors');
+  const canManageUsers = isOwner || adminPermissions.includes('manageUsers');
+  const canManageDoctors = isOwner || adminPermissions.includes('manageDoctors');
+  const tabs = [
+    { key: 'overview' as const, label: 'نظرة', visible: true },
+    { key: 'users' as const, label: 'الحسابات', visible: canManageUsers },
+    { key: 'pending' as const, label: 'طلبات الأطباء', visible: canApproveDoctors },
+    { key: 'doctors' as const, label: 'الأطباء', visible: canManageDoctors },
+  ].filter((tab) => tab.visible);
+  const permissionOptions: { key: AdminPermission; label: string }[] = [
+    { key: 'approveDoctors', label: 'قبول ورفض الأطباء' },
+    { key: 'manageUsers', label: 'إدارة الحسابات' },
+    { key: 'manageDoctors', label: 'عرض الأطباء المعتمدين' },
+  ];
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -45,14 +59,13 @@ export default function AdminDashboard({ navigation }: any) {
       const allUsers = await getAllUsers();
       const allDoctors = await getAllDoctors();
       const pending = await getPendingDoctors();
-      const resets = await getPasswordResetRequests();
       let totalAppointments = 0;
       for (const u of allUsers) {
         const apts = await getUserAppointments(u.uid);
         totalAppointments += apts.length;
       }
       const doctorsCount = allUsers.filter((u: any) => u.role === 'doctor' && u.isApproved !== false).length;
-      const patientsCount = allUsers.filter((u: any) => u.role === 'user').length;
+      const patientsCount = allUsers.filter((u: any) => u.role !== 'doctor').length;
 
       setStats({
         totalUsers: allUsers.length,
@@ -63,7 +76,6 @@ export default function AdminDashboard({ navigation }: any) {
       });
       setUsers(allUsers);
       setPendingDoctors(pending);
-      setResetRequests(resets);
     } catch (e) {
       console.error('Error fetching admin data:', e);
     }
@@ -79,30 +91,6 @@ export default function AdminDashboard({ navigation }: any) {
       clearSession();
       setUser(null);
     });
-  };
-
-  const generatePassword = () => `Med${Math.floor(10000 + Math.random() * 90000)}care`;
-
-  const handleResolveReset = (request: PasswordResetRequest, approve: boolean) => {
-    if (!approve) {
-      showConfirmation('رفض الطلب', `هل تريد رفض طلب استعادة كلمة المرور الخاص بـ "${request.name}"؟`, async () => {
-        const success = await resolvePasswordResetRequest(request.id, 'rejected');
-        showInfo(success ? 'تم' : 'خطأ', success ? 'تم رفض الطلب.' : 'فشل في رفض الطلب.');
-        fetchData();
-      });
-      return;
-    }
-
-    const newPassword = generatePassword();
-    showConfirmation(
-      'اعتماد الطلب',
-      `سيتم تغيير كلمة مرور "${request.name}" إلى:\n${newPassword}\nأرسلها للمستخدم بعد التأكد من بياناته.`,
-      async () => {
-        const success = await resolvePasswordResetRequest(request.id, 'approved', newPassword);
-        showInfo(success ? 'تم' : 'خطأ', success ? `تم تغيير كلمة المرور.\nكلمة المرور الجديدة: ${newPassword}` : 'فشل في تغيير كلمة المرور.');
-        fetchData();
-      }
-    );
   };
 
   const handleToggleUser = async (uid: string, currentActive: boolean) => {
@@ -140,6 +128,19 @@ export default function AdminDashboard({ navigation }: any) {
     );
   };
 
+  const handleToggleAdminPermission = (target: any, permission: AdminPermission) => {
+    const current = target.adminPermissions || ['approveDoctors'];
+    const next = current.includes(permission)
+      ? current.filter((item: AdminPermission) => item !== permission)
+      : [...current, permission];
+
+    showConfirmation('تعديل صلاحيات الأدمن', `هل تريد تحديث صلاحيات "${target.name}"؟`, async () => {
+      const success = await setAdminPermissions(target.uid, next, user?.role);
+      showInfo(success ? 'تم' : 'خطأ', success ? 'تم تحديث صلاحيات الأدمن.' : 'فشل تحديث الصلاحيات. هذه العملية متاحة للأونر فقط.');
+      fetchData();
+    });
+  };
+
   const handleApproveDoctor = async (uid: string, name: string) => {
     const success = await approveDoctor(uid);
     if (success) {
@@ -161,20 +162,14 @@ export default function AdminDashboard({ navigation }: any) {
   };
 
   const getRoleLabel = (role: string) => {
-    switch (role) {
-      case 'owner': return 'أونر';
-      case 'admin': return 'مسؤول';
-      case 'doctor': return 'طبيب';
-      case 'user': return 'مريض';
-      default: return role;
-    }
+    return getAccountTypeLabel(role);
   };
 
   const getRoleColor = (role: string) => {
     switch (role) {
-      case 'owner': return COLORS.accentWarm;
-      case 'admin': return COLORS.danger;
       case 'doctor': return COLORS.secondary;
+      case 'owner':
+      case 'admin':
       case 'user': return COLORS.primaryLight;
       default: return COLORS.textSecondary;
     }
@@ -206,15 +201,13 @@ export default function AdminDashboard({ navigation }: any) {
         </View>
 
         <View style={styles.tabRow}>
-          {(['overview', 'users', 'pending', 'doctors', 'resets'] as const).map((tab) => (
+          {tabs.map((tab) => (
             <TouchableOpacity
-              key={tab}
-              style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
-              onPress={() => setActiveTab(tab)}
+              key={tab.key}
+              style={[styles.tabBtn, activeTab === tab.key && styles.tabBtnActive]}
+              onPress={() => setActiveTab(tab.key)}
             >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab === 'overview' ? 'نظرة' : tab === 'users' ? 'الحسابات' : tab === 'pending' ? 'طلبات الأطباء' : tab === 'doctors' ? 'الأطباء' : 'استعادة'}
-              </Text>
+              <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -246,7 +239,7 @@ export default function AdminDashboard({ navigation }: any) {
 
             <Text style={styles.sectionTitle}>إدارة النظام</Text>
             <GlassCard style={styles.managementCard}>
-              <TouchableOpacity style={styles.actionItem} onPress={() => setActiveTab('users')}>
+              {canManageUsers && <TouchableOpacity style={styles.actionItem} onPress={() => setActiveTab('users')}>
                 <View style={styles.actionRight}>
                   <View style={[styles.actionIconBox, { backgroundColor: COLORS.primaryLight + '22' }]}>
                     <MaterialCommunityIcons name="account-cog" size={20} color={COLORS.primaryLight} />
@@ -254,8 +247,8 @@ export default function AdminDashboard({ navigation }: any) {
                   <Text style={styles.actionLabel}>إدارة المستخدمين</Text>
                 </View>
                 <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionItem} onPress={() => setActiveTab('pending')}>
+              </TouchableOpacity>}
+              {canApproveDoctors && <TouchableOpacity style={styles.actionItem} onPress={() => setActiveTab('pending')}>
                 <View style={styles.actionRight}>
                   <View style={[styles.actionIconBox, { backgroundColor: COLORS.accentWarm + '22' }]}>
                     <MaterialCommunityIcons name="clock-check-outline" size={20} color={COLORS.accentWarm} />
@@ -268,8 +261,8 @@ export default function AdminDashboard({ navigation }: any) {
                   </View>
                   <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
                 </View>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('doctors')}>
+              </TouchableOpacity>}
+              {canManageDoctors && <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('doctors')}>
                 <View style={styles.actionRight}>
                   <View style={[styles.actionIconBox, { backgroundColor: COLORS.secondary + '22' }]}>
                     <MaterialCommunityIcons name="doctor" size={20} color={COLORS.secondary} />
@@ -282,26 +275,12 @@ export default function AdminDashboard({ navigation }: any) {
                   </View>
                   <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
                 </View>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('resets')}>
-                <View style={styles.actionRight}>
-                  <View style={[styles.actionIconBox, { backgroundColor: COLORS.danger + '22' }]}>
-                    <MaterialCommunityIcons name="lock-reset" size={20} color={COLORS.danger} />
-                  </View>
-                  <Text style={styles.actionLabel}>طلبات استعادة كلمة المرور</Text>
-                </View>
-                <View style={styles.actionLeft}>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{resetRequests.filter((r) => r.status === 'pending').length}</Text>
-                  </View>
-                  <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
-                </View>
-              </TouchableOpacity>
+              </TouchableOpacity>}
             </GlassCard>
           </>
         )}
 
-        {!loading && activeTab === 'users' && (
+        {!loading && activeTab === 'users' && canManageUsers && (
           <>
             {users.filter((u) => isOwner ? u.role !== 'owner' : u.role !== 'admin' && u.role !== 'owner').length === 0 ? (
               <Text style={styles.emptyText}>لا يوجد مستخدمين حالياً</Text>
@@ -342,6 +321,24 @@ export default function AdminDashboard({ navigation }: any) {
                       </TouchableOpacity>
                     )}
                   </View>
+                  {isOwner && u.role === 'admin' && (
+                    <View style={styles.permissionsBox}>
+                      <Text style={styles.permissionsTitle}>صلاحيات هذا الأدمن</Text>
+                      {permissionOptions.map((option) => {
+                        const selected = (u.adminPermissions || ['approveDoctors']).includes(option.key);
+                        return (
+                          <TouchableOpacity
+                            key={option.key}
+                            style={styles.permissionOption}
+                            onPress={() => handleToggleAdminPermission(u, option.key)}
+                          >
+                            <Ionicons name={selected ? 'checkbox' : 'square-outline'} size={20} color={selected ? COLORS.accentWarm : COLORS.textSecondary} />
+                            <Text style={styles.permissionOptionText}>{option.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
                   <View style={styles.userActions}>
                     <View style={styles.userActionRight}>
                       <Text style={styles.userActionLabel}>{u.isActive ? 'مفعّل' : 'معطّل'}</Text>
@@ -366,7 +363,7 @@ export default function AdminDashboard({ navigation }: any) {
           </>
         )}
 
-        {!loading && activeTab === 'pending' && (
+        {!loading && activeTab === 'pending' && canApproveDoctors && (
           <>
             {pendingDoctors.length === 0 ? (
               <GlassCard style={styles.noPendingCard}>
@@ -420,7 +417,7 @@ export default function AdminDashboard({ navigation }: any) {
           </>
         )}
 
-        {!loading && activeTab === 'doctors' && (
+        {!loading && activeTab === 'doctors' && canManageDoctors && (
           <>
             {users.filter((u) => u.role === 'doctor' && u.isApproved !== false).length === 0 ? (
               <Text style={styles.emptyText}>لا يوجد أطباء معتمدين حالياً</Text>
@@ -452,44 +449,6 @@ export default function AdminDashboard({ navigation }: any) {
           </>
         )}
 
-        {!loading && activeTab === 'resets' && (
-          <>
-            {resetRequests.length === 0 ? (
-              <Text style={styles.emptyText}>لا توجد طلبات استعادة كلمة مرور</Text>
-            ) : (
-              resetRequests.map((req) => (
-                <GlassCard key={req.id} style={styles.userCard}>
-                  <View style={styles.userRow}>
-                    <View style={styles.userAvatar}>
-                      <MaterialCommunityIcons name="lock-reset" size={20} color={req.status === 'pending' ? COLORS.accentWarm : COLORS.primaryLight} />
-                    </View>
-                    <View style={styles.userInfo}>
-                      <Text style={styles.userName}>{req.name}</Text>
-                      <Text style={styles.userEmail}>{req.email}</Text>
-                      <Text style={styles.userMeta}>الهاتف: {req.phone || 'غير مسجل'}</Text>
-                      <Text style={styles.userMeta}>الدور: {getRoleLabel(req.role)}</Text>
-                      <Text style={styles.userMeta}>وقت الطلب: {formatDate(req.requestedAt)}</Text>
-                      <Text style={styles.userMeta}>الحالة: {req.status === 'pending' ? 'قيد المراجعة' : req.status === 'approved' ? 'تمت الموافقة' : 'مرفوض'}</Text>
-                      {req.adminNote && <Text style={styles.resetNote}>{req.adminNote}</Text>}
-                    </View>
-                  </View>
-                  {req.status === 'pending' && (
-                    <View style={styles.pendingActions}>
-                      <TouchableOpacity style={[styles.pendingBtn, styles.approveBtn]} onPress={() => handleResolveReset(req, true)}>
-                        <Ionicons name="checkmark-circle" size={18} color="#FFF" />
-                        <Text style={styles.pendingBtnText}>تأكيد وإصدار كلمة مرور</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pendingBtn, styles.rejectBtn]} onPress={() => handleResolveReset(req, false)}>
-                        <Ionicons name="close-circle" size={18} color="#FFF" />
-                        <Text style={styles.pendingBtnText}>رفض</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </GlassCard>
-              ))
-            )}
-          </>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -551,6 +510,10 @@ const styles = StyleSheet.create({
   adminPermissionBtn: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 6 },
   adminPermissionBtnDanger: { backgroundColor: COLORS.danger },
   adminPermissionText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+  permissionsBox: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.borderColor },
+  permissionsTitle: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginBottom: 8 },
+  permissionOption: { flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 6, gap: 8 },
+  permissionOptionText: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right' },
   userActions: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.borderColor },
   userActionRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   userActionLabel: { color: COLORS.textSecondary, fontSize: 13 },

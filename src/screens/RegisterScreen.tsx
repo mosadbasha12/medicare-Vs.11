@@ -34,7 +34,7 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
 
   useEffect(() => {
     if (user) {
-      const targetScreen = user.role === 'doctor' ? 'DoctorDashboard' : user.role === 'admin' || user.role === 'owner' ? 'Admin' : 'MainTabs';
+      const targetScreen = user.role === 'doctor' ? 'DoctorDashboard' : 'MainTabs';
       navigation.reset({
         index: 0,
         routes: [{ name: targetScreen as any }],

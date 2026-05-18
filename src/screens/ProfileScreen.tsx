@@ -37,11 +37,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const gender = user?.gender || 'male';
 
   const avatarEmoji =
-    user?.role === 'admin'
-      ? gender === 'female' ? '👩‍💼' : '👨‍💼'
-      : user?.role === 'owner'
-        ? gender === 'female' ? '👩‍💼' : '👨‍💼'
-      : user?.role === 'doctor'
+    user?.role === 'doctor'
         ? gender === 'female' ? '👩‍⚕️' : '👨‍⚕️'
         : gender === 'female' ? '👩' : '👨';
 
@@ -105,7 +101,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            </TouchableOpacity>
         )}
 
-        {user?.role === 'user' && (
+        {user?.role !== 'doctor' && (
           <GlassCard style={styles.progressCard}>
             <View style={styles.progressHeader}>
                 <Text style={styles.pointsText}>

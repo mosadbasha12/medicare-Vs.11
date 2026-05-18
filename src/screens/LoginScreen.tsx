@@ -39,7 +39,6 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
     if (user) {
       let targetScreen = 'MainTabs';
       if (user.role === 'doctor') targetScreen = 'DoctorDashboard';
-      else if (user.role === 'admin' || user.role === 'owner') targetScreen = 'Admin';
       navigation.reset({
         index: 0,
         routes: [{ name: targetScreen as any }],
@@ -76,7 +75,6 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
           setUser(u);
           let targetScreen = 'MainTabs';
           if (u.role === 'doctor') targetScreen = 'DoctorDashboard';
-          else if (u.role === 'admin' || u.role === 'owner') targetScreen = 'Admin';
           navigation.reset({
             index: 0,
             routes: [{ name: targetScreen as any }],
@@ -120,7 +118,6 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
           setUser(u);
           let targetScreen = 'MainTabs';
           if (u.role === 'doctor') targetScreen = 'DoctorDashboard';
-          else if (u.role === 'admin' || u.role === 'owner') targetScreen = 'Admin';
           navigation.reset({
             index: 0,
             routes: [{ name: targetScreen as any }],
@@ -191,7 +188,6 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
         setTimeout(() => {
           let targetScreen = 'MainTabs';
           if (u.role === 'doctor') targetScreen = 'DoctorDashboard';
-          else if (u.role === 'admin' || u.role === 'owner') targetScreen = 'Admin';
           navigation.reset({
             index: 0,
             routes: [{ name: targetScreen as any }],

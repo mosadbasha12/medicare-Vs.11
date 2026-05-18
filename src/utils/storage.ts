@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AppUser, PasswordResetRequest } from '../types';
+import type { AdminPermission, AppUser, PasswordResetRequest } from '../types';
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -28,6 +28,7 @@ export const ADMIN_PASSWORD_LABEL = 'تم تعيين كلمة مرور مخصص�
 const ADMIN_PASSWORD_HASH = 'hashed_l4y4l7_11';
 const OWNER_EMAIL_HASH = 'hashed_m63nko_27';
 const OWNER_PASSWORD_HASH = 'hashed_dgp1nf_13';
+export const DEFAULT_ADMIN_PERMISSIONS: AdminPermission[] = ['approveDoctors'];
 
 export const isOwnerEmail = (email: string): boolean =>
   hashPassword(email.trim().toLowerCase()) === OWNER_EMAIL_HASH;
@@ -39,8 +40,6 @@ export const getPermissionLabel = (role?: string): string => {
 };
 
 export const getAccountTypeLabel = (role?: string): string => {
-  if (role === 'owner') return 'مالك النظام';
-  if (role === 'admin') return 'مسؤول';
   if (role === 'doctor') return 'طبيب';
   return 'مريض';
 };
@@ -87,6 +86,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
         password: ADMIN_PASSWORD_HASH,
         level: 'ذهبي',
         role: 'admin',
+        adminPermissions: DEFAULT_ADMIN_PERMISSIONS,
         isActive: true,
         isApproved: true,
         balance: 0,
@@ -111,6 +111,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
         isActive: true,
         isApproved: true,
         role: 'admin',
+        adminPermissions: existing[adminIndex].adminPermissions || DEFAULT_ADMIN_PERMISSIONS,
       };
       await AsyncStorage.setItem(USERS_KEY, JSON.stringify(existing));
       await AsyncStorage.setItem(ADMIN_INIT_KEY, 'true');
@@ -124,6 +125,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
       password: ADMIN_PASSWORD_HASH,
       level: 'ذهبي',
       role: 'admin',
+      adminPermissions: DEFAULT_ADMIN_PERMISSIONS,
       isActive: true,
       isApproved: true,
       balance: 0,
@@ -155,6 +157,7 @@ export const initializeOwnerAccount = async (): Promise<boolean> => {
         isActive: true,
         isApproved: true,
         role: 'owner',
+        adminPermissions: ['approveDoctors', 'manageUsers', 'manageDoctors'],
         emailVerified: true,
       };
       await AsyncStorage.setItem(USERS_KEY, JSON.stringify(existing));
@@ -231,6 +234,7 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     balance: user.balance,
     isActive: user.isActive,
     isApproved: isOwner ? true : user.isApproved,
+    adminPermissions: isOwner ? ['approveDoctors', 'manageUsers', 'manageDoctors'] : user.role === 'admin' ? DEFAULT_ADMIN_PERMISSIONS : user.adminPermissions,
     specialty: user.specialty,
     medicalId: user.medicalId,
     patientsCount: user.patientsCount,
@@ -239,11 +243,11 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     clinicLocation: user.clinicLocation,
     emailVerified: isOwner ? true : emailVerified,
     phoneVerified: user.phoneVerified,
-    weight: user.role === 'user' || isOwner ? user.weight ?? 0 : user.weight,
-    bloodType: user.role === 'user' || isOwner ? user.bloodType ?? '' : user.bloodType,
-    age: user.role === 'user' || isOwner ? user.age ?? 0 : user.age,
-    gender: user.role === 'user' || isOwner ? user.gender ?? 'male' : user.gender,
-    consultationsCount: user.role === 'user' || isOwner ? user.consultationsCount ?? 0 : user.consultationsCount,
+    weight: user.role !== 'doctor' || isOwner ? user.weight ?? 0 : user.weight,
+    bloodType: user.role !== 'doctor' || isOwner ? user.bloodType ?? '' : user.bloodType,
+    age: user.role !== 'doctor' || isOwner ? user.age ?? 0 : user.age,
+    gender: user.role !== 'doctor' || isOwner ? user.gender ?? 'male' : user.gender,
+    consultationsCount: user.role !== 'doctor' || isOwner ? user.consultationsCount ?? 0 : user.consultationsCount,
     createdAt: new Date().toISOString(),
   };
   const userWithPass = { ...newUser, password: hashedPassword };
@@ -287,6 +291,7 @@ export const findUserInDB = async (email: string, pass: string): Promise<AppUser
             password: hashedPass,
             level: 'ذهبي',
             role: 'owner',
+            adminPermissions: ['approveDoctors', 'manageUsers', 'manageDoctors'],
             balance: 0,
             isActive: true,
             isApproved: true,
@@ -465,7 +470,7 @@ export const signInWithGoogleInDB = async (
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
-        ...(userData.role === 'user' || !userData.role ? {
+        ...(userData.role !== 'doctor' ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
           age: userData.age ?? 0,
@@ -480,7 +485,7 @@ export const signInWithGoogleInDB = async (
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
-        ...(userData.role === 'user' || !userData.role ? {
+        ...(userData.role !== 'doctor' ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
           age: userData.age ?? 0,
@@ -490,7 +495,7 @@ export const signInWithGoogleInDB = async (
       };
     }
 
-    if (userData.role && userData.role !== 'user') return { status: 'google_patient_only' };
+    if (userData.role === 'doctor') return { status: 'google_patient_only' };
     if (userData.isActive === false) return { status: 'inactive' };
     if (userData.role === 'doctor' && userData.isApproved === false) return { status: 'pending' };
 
@@ -559,7 +564,7 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
-        ...(userData.role === 'user' || !userData.role ? {
+        ...(userData.role !== 'doctor' ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
           age: userData.age ?? 0,
@@ -574,7 +579,7 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
-        ...(userData.role === 'user' || !userData.role ? {
+        ...(userData.role !== 'doctor' ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
           age: userData.age ?? 0,
@@ -584,7 +589,7 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
       };
     }
 
-    if (userData.role && userData.role !== 'user') return { status: 'google_patient_only' };
+    if (userData.role === 'doctor') return { status: 'google_patient_only' };
     if (userData.isActive === false) return { status: 'inactive' };
     if (userData.role === 'doctor' && userData.isApproved === false) return { status: 'pending' };
 
