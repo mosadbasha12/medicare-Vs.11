@@ -14,6 +14,8 @@ import { addDoctorToCatalog } from '../utils/localDataService';
 import { useUser } from '../context/UserContext';
 import type { UserRole } from '../types';
 
+const EMAIL_DELIVERY_HINT = '\n\nإذا لم تجد الرسالة في البريد الوارد، راجع الرسائل غير المرغوب فيها (Junk/Spam).';
+
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
     alert(`${title}\n${message}`);
@@ -96,10 +98,10 @@ export default function RegisterScreen({ navigation }: { navigation: any }) {
       if (savedUser) {
         if (role === 'doctor') {
           await addDoctorToCatalog(savedUser);
-          showAlert('تم إنشاء الحساب', `مرحباً ${savedUser.name}\nتم إرسال رابط تأكيد إلى بريدك الإلكتروني.\nبعد تأكيد البريد سيظل حساب الطبيب قيد مراجعة الإدارة.`);
+          showAlert('تم إنشاء الحساب', `مرحباً ${savedUser.name}\nتم إرسال رابط تأكيد إلى بريدك الإلكتروني.\nبعد تأكيد البريد سيظل حساب الطبيب قيد مراجعة الإدارة.${EMAIL_DELIVERY_HINT}`);
           navigation.navigate('Login');
         } else {
-          showAlert('تم إنشاء الحساب', `مرحباً ${savedUser.name}\nتم إرسال رابط تأكيد إلى بريدك الإلكتروني.\nافتح الإيميل واضغط رابط التأكيد ثم سجل الدخول.`);
+          showAlert('تم إنشاء الحساب', `مرحباً ${savedUser.name}\nتم إرسال رابط تأكيد إلى بريدك الإلكتروني.\nافتح الإيميل واضغط رابط التأكيد ثم سجل الدخول.${EMAIL_DELIVERY_HINT}`);
           navigation.navigate('Login');
         }
       } else {

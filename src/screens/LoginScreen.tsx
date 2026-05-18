@@ -10,6 +10,8 @@ import { useUser } from '../context/UserContext';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const EMAIL_DELIVERY_HINT = '\n\nإذا لم تجد الرسالة في البريد الوارد، راجع الرسائل غير المرغوب فيها (Junk/Spam).';
+
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
     alert(`${title}\n${message}`);
@@ -178,7 +180,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
           return;
         }
         if ((foundUser as any).status === 'email_unverified') {
-          showAlert('تأكيد البريد مطلوب', 'تم إرسال رابط تأكيد جديد إلى بريدك الإلكتروني.\nافتح الإيميل واضغط رابط التأكيد ثم سجل الدخول مرة أخرى.');
+          showAlert('تأكيد البريد مطلوب', `تم إرسال رابط تأكيد جديد إلى بريدك الإلكتروني.\nافتح الإيميل واضغط رابط التأكيد ثم سجل الدخول مرة أخرى.${EMAIL_DELIVERY_HINT}`);
           setLoading(false);
           return;
         }
@@ -222,7 +224,7 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
       if (result === 'not_found') {
         showAlert('لم يتم العثور على الحساب', 'لا يوجد حساب مسجل بهذا البريد الإلكتروني.');
       } else if (result === 'sent') {
-        showAlert('تم إرسال الرابط', 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.\nافتح الإيميل واتبع الخطوات ثم سجل الدخول بكلمة المرور الجديدة.');
+        showAlert('تم إرسال الرابط', `تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.\nافتح الإيميل واتبع الخطوات ثم سجل الدخول بكلمة المرور الجديدة.${EMAIL_DELIVERY_HINT}`);
       } else if (result === 'already_pending') {
         showAlert('طلب موجود', 'يوجد طلب استعادة كلمة مرور قيد مراجعة الأدمن بالفعل.');
       } else {
