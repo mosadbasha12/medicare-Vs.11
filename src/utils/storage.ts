@@ -241,6 +241,28 @@ export const findUserInDB = async (email: string, pass: string): Promise<AppUser
         snap = await getDocs(legacyQ);
       }
 
+      if (snap.empty && trimmedEmail !== ADMIN_EMAIL) {
+        const emailOnlyQ = query(collection(db, 'users'), where('emailLower', '==', trimmedEmail));
+        const emailOnlySnap = await getDocs(emailOnlyQ);
+        if (!emailOnlySnap.empty) {
+          const userDoc = emailOnlySnap.docs[0];
+          const found = userDoc.data() as any;
+          if (found.isActive === false) return { status: 'inactive' };
+          if (found.role === 'doctor' && found.isApproved === false) return { status: 'pending' };
+
+          await setDoc(doc(db, 'users', userDoc.id), {
+            password: hashedPass,
+            emailVerified: true,
+          }, { merge: true });
+
+          found.password = hashedPass;
+          found.emailVerified = true;
+          const { password, emailLower, ...userWithoutPass } = found;
+          await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userWithoutPass));
+          return userWithoutPass;
+        }
+      }
+
       if (!snap.empty) {
         const found = snap.docs[0].data() as any;
         if (found.isActive === false) return { status: 'inactive' };
