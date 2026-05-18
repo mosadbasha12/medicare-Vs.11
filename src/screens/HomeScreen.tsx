@@ -19,6 +19,15 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [resultsCount, setResultsCount] = useState(0);
   const [prescriptionsCount, setPrescriptionsCount] = useState(0);
+  const healthFields = [
+    user?.age && user.age > 0 ? user.age : undefined,
+    user?.weight && user.weight > 0 ? user.weight : undefined,
+    user?.bloodType,
+  ];
+  const completedHealthFields = healthFields.filter(Boolean).length;
+  const profileCompletion = Math.round((completedHealthFields / healthFields.length) * 100);
+  const hasHealthData = completedHealthFields > 0;
+  const consultationsCount = user?.consultationsCount ?? 0;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -84,10 +93,34 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
 
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('healthOverview')}</Text>
-        <GlassCard style={{ marginBottom: 120 }}>
-           <HealthMetric label={t('pulseRate')} value="72 bpm" percent={70} color={COLORS.danger} />
-           <HealthMetric label={t('bloodPressure')} value="120/80" percent={60} color={COLORS.secondary} />
-           <HealthMetric label={t('bloodSugar')} value="95 mg/dl" percent={85} color={COLORS.accentWarm} />
+        <GlassCard style={styles.healthOverviewCard}>
+          <View style={styles.healthOverviewHeader}>
+            <View style={styles.healthOverviewIcon}>
+              <FontAwesome5 name="notes-medical" size={18} color={COLORS.accentWarm} />
+            </View>
+            <View style={styles.healthOverviewTexts}>
+              <Text style={styles.healthOverviewTitle}>
+                {hasHealthData ? t('profileComplete') : t('manageProfileData')}
+              </Text>
+              <Text style={styles.healthOverviewSubtitle}>
+                {hasHealthData ? `${t('profileCompletion')} ${profileCompletion}%` : t('dataPrivacyNote')}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.healthGrid}>
+            <HealthMetric label={t('consultation')} value={String(consultationsCount)} icon="stethoscope" color={COLORS.primaryLight} />
+            <HealthMetric label={t('bloodType')} value={user?.bloodType || '--'} icon="tint" color={COLORS.danger} />
+            <HealthMetric label={t('weightKg')} value={user?.weight && user.weight > 0 ? String(user.weight) : '--'} icon="weight" color={COLORS.secondary} />
+            <HealthMetric label={t('age')} value={user?.age && user.age > 0 ? String(user.age) : '--'} icon="birthday-cake" color={COLORS.accentWarm} />
+          </View>
+
+          {completedHealthFields < healthFields.length && (
+            <TouchableOpacity style={styles.completeProfileBtn} onPress={() => navigation.navigate('EditProfile')}>
+              <Text style={styles.completeProfileText}>{t('editProfile')}</Text>
+              <Ionicons name="chevron-back" size={18} color={COLORS.bgBase} />
+            </TouchableOpacity>
+          )}
         </GlassCard>
 
       </ScrollView>
@@ -116,13 +149,13 @@ const QuickAction = ({ icon, label, onPress }: { icon: string; label: string; on
   </TouchableOpacity>
 );
 
-const HealthMetric = ({ label, value, percent, color }: { label: string; value: string; percent: number; color: string }) => (
-  <View style={styles.healthMetricContainer}>
-    <Text style={styles.healthMetricLabel}>{label}</Text>
-    <View style={styles.progressBarBg}>
-      <View style={[styles.progressBarFill, { width: `${percent}%`, backgroundColor: color }]} />
+const HealthMetric = ({ label, value, icon, color }: { label: string; value: string; icon: string; color: string }) => (
+  <View style={styles.healthMetricBox}>
+    <View style={[styles.healthMetricIcon, { backgroundColor: color + '22' }]}>
+      <FontAwesome5 name={icon as any} size={16} color={color} />
     </View>
-    <Text style={[styles.healthMetricValue, { color }]}>{value}</Text>
+    <Text style={styles.healthMetricValue}>{value}</Text>
+    <Text style={styles.healthMetricLabel}>{label}</Text>
   </View>
 );
 
@@ -155,9 +188,17 @@ const styles = StyleSheet.create({
   quickAction: { alignItems: 'center' },
   quickActionIconBox: { width: 50, height: 50, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 8, borderWidth: 1, borderColor: COLORS.borderColor },
   quickActionLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
-  healthMetricContainer: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 16 },
-  healthMetricLabel: { color: COLORS.textSecondary, fontSize: 12, width: 80, textAlign: 'right' },
-  progressBarBg: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, marginHorizontal: 12, flexDirection: 'row-reverse' },
-  progressBarFill: { height: '100%', borderRadius: 3 },
-  healthMetricValue: { width: 70, textAlign: 'left', fontSize: 12, fontWeight: 'bold' },
+  healthOverviewCard: { marginBottom: 120, padding: 16 },
+  healthOverviewHeader: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 16 },
+  healthOverviewIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: COLORS.accentWarm + '22', alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
+  healthOverviewTexts: { flex: 1 },
+  healthOverviewTitle: { color: COLORS.textPrimary, fontSize: 15, fontWeight: 'bold', textAlign: 'right' },
+  healthOverviewSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'right', lineHeight: 18 },
+  healthGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 },
+  healthMetricBox: { width: '48%', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 14, padding: 12, alignItems: 'flex-end' },
+  healthMetricIcon: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  healthMetricValue: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right' },
+  healthMetricLabel: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'right' },
+  completeProfileBtn: { marginTop: 14, backgroundColor: COLORS.accentWarm, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  completeProfileText: { color: COLORS.bgBase, fontSize: 13, fontWeight: 'bold' },
 });
