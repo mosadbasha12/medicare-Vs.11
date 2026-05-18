@@ -15,6 +15,7 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ChatScreen from '../screens/ChatScreen';
+import ChatListScreen from '../screens/ChatListScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import LanguageScreen from '../screens/LanguageScreen';
@@ -103,6 +104,7 @@ export default function AppNavigator() {
       {user ? (
         <>
           <Stack.Screen name="MainTabs" component={TabNavigator} />
+          <Stack.Screen name="ChatList" component={ChatListScreen} />
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="Payment" component={PaymentScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Appointment, LabResult, Prescription, Doctor } from '../types';
+import type { Appointment, LabResult, Prescription, Doctor, ChatMessage } from '../types';
 import { COLORS } from '../theme';
 import {
   addDoc,
@@ -42,6 +42,16 @@ export interface PrescriptionOrder {
   orderedAt: string;
   med: string;
   dosage: string;
+}
+
+export interface ChatSummary {
+  doctorId: string;
+  doctorName: string;
+  doctorEmoji?: string;
+  specialty?: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  messagesCount: number;
 }
 
 const DEFAULT_DOCTORS: Doctor[] = [
@@ -494,6 +504,33 @@ export const sendMessage = async (message: any): Promise<boolean> => {
   msgs.push({ ...message, id: `msg_${Date.now()}` });
   await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
   return true;
+};
+
+export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[]> => {
+  const doctors = await getAllDoctors();
+  const summaries: ChatSummary[] = [];
+
+  for (const doctor of doctors) {
+    const chatId = `${userId}_${doctor.id}`;
+    const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
+    if (!stored) continue;
+
+    const messages: ChatMessage[] = JSON.parse(stored);
+    if (messages.length === 0) continue;
+
+    const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    summaries.push({
+      doctorId: doctor.id,
+      doctorName: doctor.name,
+      doctorEmoji: doctor.emoji,
+      specialty: doctor.specialty,
+      lastMessage: last.text,
+      lastMessageAt: last.createdAt,
+      messagesCount: messages.length,
+    });
+  }
+
+  return summaries.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 };
 
 export const listenToMessages = (
