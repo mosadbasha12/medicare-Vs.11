@@ -1,17 +1,26 @@
 import React from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
+import { AppLanguage, useLanguage } from '../context/LanguageContext';
 
 export default function LanguageScreen({ navigation }: any) {
-  const showUnavailable = () => {
-    const message = 'اللغة الإنجليزية غير متاحة حالياً';
-    if (Platform.OS === 'web') {
-      window.alert(message);
-    } else {
-      Alert.alert('تنبيه', message);
-    }
+  const { language, setLanguage, t } = useLanguage();
+
+  const renderOption = (value: AppLanguage, title: string) => {
+    const selected = language === value;
+    return (
+      <TouchableOpacity style={styles.option} onPress={() => setLanguage(value)} activeOpacity={0.85}>
+        <GlassCard style={[styles.card, selected ? styles.activeCard : undefined]}>
+          <View style={styles.langTextWrap}>
+            <Text style={styles.langName}>{title}</Text>
+            <Text style={styles.langSub}>{selected ? t('currentLanguage') : t('chooseAndReload')}</Text>
+          </View>
+          <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={selected ? COLORS.primaryLight : COLORS.textSecondary} />
+        </GlassCard>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -20,30 +29,13 @@ export default function LanguageScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>اختر اللغة</Text>
+        <Text style={styles.headerTitle}>{t('chooseLanguage')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <View style={styles.content}>
-        <TouchableOpacity style={styles.option} activeOpacity={0.85}>
-          <GlassCard style={[styles.card, styles.activeCard]}>
-            <View style={styles.langTextWrap}>
-              <Text style={styles.langName}>العربية</Text>
-              <Text style={styles.langSub}>اللغة الحالية</Text>
-            </View>
-            <Ionicons name="checkmark-circle" size={26} color={COLORS.primaryLight} />
-          </GlassCard>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.option} onPress={showUnavailable} activeOpacity={0.85}>
-          <GlassCard style={[styles.card, { opacity: 0.6 }]}>
-            <View style={styles.langTextWrap}>
-              <Text style={styles.langName}>English</Text>
-              <Text style={styles.langSub}>قريباً</Text>
-            </View>
-            <Ionicons name="lock-closed-outline" size={22} color={COLORS.textSecondary} />
-          </GlassCard>
-        </TouchableOpacity>
+        {renderOption('ar', t('arabic'))}
+        {renderOption('en', t('english'))}
       </View>
     </SafeAreaView>
   );

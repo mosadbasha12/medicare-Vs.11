@@ -5,6 +5,7 @@ import { GlassCard } from '../components/GlassCard';
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
 import { clearSession as logoutFromStorage } from '../utils/storage';
+import { useLanguage } from '../context/LanguageContext';
 
 interface ProfileScreenProps {
   navigation: {
@@ -15,6 +16,7 @@ interface ProfileScreenProps {
 
 export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const { user, setUser } = useUser();
+  const { language, t } = useLanguage();
   
   const progress = 0.75; 
   const pointsToNext = 250;
@@ -25,7 +27,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>الملف الشخصي</Text>
+        <Text style={styles.headerTitle}>{t('profile')}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -49,7 +51,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
                   style={{ marginLeft: 4 }} 
                 />
                 <Text style={styles.levelText}>
-                  {user?.role === 'admin' ? 'مسؤول النظام' : user?.role === 'doctor' ? 'طبيب ممارس' : `عضو ${user?.level}`}
+                  {user?.role === 'admin' ? t('systemAdmin') : user?.role === 'doctor' ? t('doctorUser') : `${t('member')} ${user?.level}`}
                 </Text>
               </View>
            </View>
@@ -59,8 +61,8 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            <TouchableOpacity style={[styles.adminPanelBtn, { backgroundColor: COLORS.secondary }]} onPress={() => navigation.navigate('DoctorDashboard')}>
               <MaterialCommunityIcons name="view-dashboard-outline" size={24} color="#FFF" />
               <View style={styles.adminPanelTexts}>
-                 <Text style={styles.adminTitle}>لوحة تحكم الطبيب</Text>
-                 <Text style={styles.adminSub}>إدارة المرضى، المواعيد، وجدول العمل</Text>
+                 <Text style={styles.adminTitle}>{t('doctorDashboard')}</Text>
+                 <Text style={styles.adminSub}>{t('doctorDashboardSub')}</Text>
               </View>
               <Ionicons name="chevron-back" size={20} color="#FFF" />
            </TouchableOpacity>
@@ -70,8 +72,8 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            <TouchableOpacity style={styles.adminPanelBtn} onPress={() => navigation.navigate('Admin')}>
               <MaterialCommunityIcons name="view-dashboard-outline" size={24} color="#FFF" />
               <View style={styles.adminPanelTexts}>
-                 <Text style={styles.adminTitle}>لوحة تحكم المسؤول</Text>
-                 <Text style={styles.adminSub}>إدارة المستخدمين، الأطباء، والتقارير المالية</Text>
+                 <Text style={styles.adminTitle}>{t('adminDashboard')}</Text>
+                 <Text style={styles.adminSub}>{t('adminDashboardSub')}</Text>
               </View>
               <Ionicons name="chevron-back" size={20} color="#FFF" />
            </TouchableOpacity>
@@ -80,16 +82,16 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         {user?.role === 'user' && (
           <GlassCard style={styles.progressCard}>
             <View style={styles.progressHeader}>
-                <Text style={styles.pointsText}>بقي لك {pointsToNext} نقطة للوصول للمستوى التالي</Text>
+                <Text style={styles.pointsText}>{t('pointsToNext')}</Text>
                 <Text style={styles.progressPercent}>{Math.round(progress * 100)}%</Text>
             </View>
             <View style={styles.progressBarBg}>
                 <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
             </View>
             <View style={styles.levelLabels}>
-                <Text style={styles.levelLabel}>فضي</Text>
-                <Text style={styles.levelLabelActive}>ذهبي</Text>
-                <Text style={styles.levelLabel}>بلاتيني</Text>
+                <Text style={styles.levelLabel}>{t('silver')}</Text>
+                <Text style={styles.levelLabelActive}>{t('gold')}</Text>
+                <Text style={styles.levelLabel}>{t('platinum')}</Text>
             </View>
           </GlassCard>
         )}
@@ -97,52 +99,52 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         <View style={styles.statsRow}>
            <View style={styles.statBox}>
              <Text style={styles.statVal}>{user?.role === 'doctor' ? '120' : consultationsCount}</Text>
-             <Text style={styles.statLbl}>{user?.role === 'doctor' ? 'مريض' : 'استشارة'}</Text>
+             <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('patient') : t('consultation')}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
              <Text style={styles.statVal}>{user?.role === 'doctor' ? '4.9' : bloodType}</Text>
-             <Text style={styles.statLbl}>{user?.role === 'doctor' ? 'تقييم' : 'فصيلة الدم'}</Text>
+             <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('rating') : t('bloodType')}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
              <Text style={styles.statVal}>{user?.role === 'doctor' ? '8' : weight}</Text>
-             <Text style={styles.statLbl}>{user?.role === 'doctor' ? 'خبير' : 'الوزن (كج)'}</Text>
+             <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('expert') : t('weightKg')}</Text>
            </View>
         </View>
 
-        <Text style={styles.sectionTitle}>الحساب والمالية</Text>
+        <Text style={styles.sectionTitle}>{t('accountFinance')}</Text>
         <GlassCard style={styles.card}>
            <SettingItem 
              icon="wallet" 
-             label="المحفظة وطرق الدفع" 
+             label={t('wallet')} 
              color={COLORS.secondary} 
              onPress={() => navigation.navigate('Payment')} 
            />
            <SettingItem 
              icon="history" 
-             label="سجل المعاملات" 
+             label={t('transactions')} 
              color={COLORS.primaryLight} 
              onPress={() => navigation.navigate('Transactions')}
            />
         </GlassCard>
 
-        <Text style={styles.sectionTitle}>الإعدادات العامة</Text>
+        <Text style={styles.sectionTitle}>{t('generalSettings')}</Text>
         <GlassCard style={styles.card}>
            <SettingItem 
              icon="user-edit" 
-             label="تعديل البيانات" 
+             label={t('editProfile')} 
              color={COLORS.primaryLight} 
              onPress={() => navigation.navigate('EditProfile')}
            />
            <SettingItem 
              icon="language" 
-             label="اللغة (العربية)" 
+             label={language === 'ar' ? t('languageArabic') : t('languageEnglish')} 
              color={COLORS.accentWarm} 
              onPress={() => navigation.navigate('Language')}
            />
-           <SettingItem icon="bell" label="التنبيهات" color={COLORS.danger} onPress={() => navigation.navigate('Notifications')} />
-           <SettingItem icon="shield-alt" label="الخصوصية والأمان" color={COLORS.textSecondary} />
+           <SettingItem icon="bell" label={t('notifications')} color={COLORS.danger} onPress={() => navigation.navigate('Notifications')} />
+           <SettingItem icon="shield-alt" label={t('privacy')} color={COLORS.textSecondary} />
         </GlassCard>
 
         <TouchableOpacity 
@@ -154,7 +156,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
           }}
         >
           <FontAwesome5 name="sign-out-alt" size={16} color={COLORS.danger} style={{ marginLeft: 8 }} />
-          <Text style={styles.logoutText}>تسجيل الخروج</Text>
+          <Text style={styles.logoutText}>{t('logout')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

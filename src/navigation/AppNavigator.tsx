@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { useUser } from '../context/UserContext';
+import { useLanguage } from '../context/LanguageContext';
 
 import HomeScreen from '../screens/HomeScreen';
 import DoctorsScreen from '../screens/DoctorsScreen';
@@ -31,6 +32,8 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const TabNavigator = () => {
+  const { t } = useLanguage();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -38,6 +41,14 @@ const TabNavigator = () => {
         tabBarStyle: styles.tabBar,
         tabBarShowLabel: true,
         tabBarLabelStyle: { fontSize: 10, fontWeight: 'bold' },
+        tabBarLabel:
+          route.name === 'الرئيسية'
+            ? t('home')
+            : route.name === 'الأطباء'
+              ? t('doctors')
+              : route.name === 'المواعيد'
+                ? t('appointments')
+                : t('account'),
         tabBarActiveTintColor: COLORS.primaryLight,
         tabBarInactiveTintColor: COLORS.textSecondary,
         tabBarIcon: ({ focused }) => {
