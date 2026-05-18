@@ -100,7 +100,11 @@ export interface LabResult {
   name: string;
   date: string;
   lab: string;
-  status: 'طبيعي' | 'يحتاج مراجعة';
+  status: 'طبيعي' | 'يحتاج مراجعة' | 'مرفوع';
+  category?: 'lab' | 'xray' | 'prescription';
+  fileName?: string;
+  fileData?: string;
+  mimeType?: string;
 }
 
 export interface Prescription {

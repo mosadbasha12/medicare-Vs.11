@@ -350,25 +350,44 @@ export const getDoctorStats = async (doctorId: string): Promise<{ totalPatients:
 
 export const getUserResults = async (userId: string): Promise<LabResult[]> => {
   const stored = await AsyncStorage.getItem(`@results_${userId}`);
-  if (stored) return JSON.parse(stored);
-  const defaults: LabResult[] = [
-    { id: '1', userId, name: 'تحليل دم كامل (CBC)', date: '15 أبريل 2026', lab: 'مختبرات تكنو', status: 'طبيعي' },
-    { id: '2', userId, name: 'فحص وظائف الكبد', date: '10 أبريل 2026', lab: 'مختبرات تكنو', status: 'يحتاج مراجعة' },
-    { id: '3', userId, name: 'تحليل فيتامين د', date: '01 مارس 2026', lab: 'مختبر الأمل', status: 'طبيعي' },
-  ];
-  await AsyncStorage.setItem(`@results_${userId}`, JSON.stringify(defaults));
-  return defaults;
+  if (!stored) return [];
+
+  const results: LabResult[] = JSON.parse(stored);
+  const seededNames = ['تحليل دم كامل (CBC)', 'فحص وظائف الكبد', 'تحليل فيتامين د'];
+  const onlySeededResults = results.length > 0 && results.every((item) => seededNames.includes(item.name) && !item.fileData);
+  if (onlySeededResults) {
+    await AsyncStorage.setItem(`@results_${userId}`, JSON.stringify([]));
+    return [];
+  }
+
+  return results;
+};
+
+export const createUserResult = async (result: Omit<LabResult, 'id'>): Promise<LabResult | null> => {
+  try {
+    const newResult: LabResult = { ...result, id: `result_${Date.now()}` };
+    const existing = await getUserResults(result.userId);
+    existing.unshift(newResult);
+    await AsyncStorage.setItem(`@results_${result.userId}`, JSON.stringify(existing));
+    return newResult;
+  } catch {
+    return null;
+  }
 };
 
 export const getUserPrescriptions = async (userId: string): Promise<Prescription[]> => {
   const stored = await AsyncStorage.getItem(`@prescriptions_${userId}`);
-  if (stored) return JSON.parse(stored);
-  const defaults: Prescription[] = [
-    { id: '1', userId, med: 'باندول إكسترا', dosage: '500 مجم • مرتين يومياً', doctor: 'د. سارة ميتشيل', date: '20 أبريل 2026' },
-    { id: '2', userId, med: 'أوجمنتين', dosage: '1 جم • كل 12 ساعة', doctor: 'د. أوين برادي', date: '18 أبريل 2026' },
-  ];
-  await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(defaults));
-  return defaults;
+  if (!stored) return [];
+
+  const prescriptions: Prescription[] = JSON.parse(stored);
+  const seededMeds = ['باندول إكسترا', 'أوجمنتين'];
+  const onlySeededPrescriptions = prescriptions.length > 0 && prescriptions.every((item) => seededMeds.includes(item.med));
+  if (onlySeededPrescriptions) {
+    await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify([]));
+    return [];
+  }
+
+  return prescriptions;
 };
 
 export const createPrescription = async (prescription: Omit<Prescription, 'id'>): Promise<Prescription | null> => {
