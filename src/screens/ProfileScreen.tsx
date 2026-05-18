@@ -17,9 +17,19 @@ interface ProfileScreenProps {
 export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const { user, setUser } = useUser();
   const { language, t } = useLanguage();
-  
-  const progress = 0.75; 
-  const pointsToNext = 250;
+
+  const profileFields = [
+    user?.name,
+    user?.email,
+    user?.phone,
+    user?.gender,
+    user?.age && user.age > 0 ? user.age : undefined,
+    user?.weight && user.weight > 0 ? user.weight : undefined,
+    user?.bloodType,
+  ];
+  const completedFields = profileFields.filter(Boolean).length;
+  const profileCompletion = Math.round((completedFields / profileFields.length) * 100);
+  const missingFields = profileFields.length - completedFields;
   const consultationsCount = user?.consultationsCount ?? 0;
   const bloodType = user?.bloodType || '--';
   const weight = user?.weight ?? 0;
@@ -45,7 +55,6 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
               <View style={styles.avatarCircle}>
                 <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
               </View>
-              <View style={[styles.progressRing, { borderRightColor: COLORS.accentWarm, borderTopColor: COLORS.accentWarm, borderBottomColor: COLORS.accentWarm }]} />
            </View>
            
            <View style={styles.levelInfo}>
@@ -58,7 +67,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
                   style={{ marginLeft: 4 }} 
                 />
                 <Text style={styles.levelText}>
-                  {user?.role === 'admin' ? t('systemAdmin') : user?.role === 'doctor' ? t('doctorUser') : `${t('member')} ${user?.level}`}
+                  {user?.role === 'admin' ? t('systemAdmin') : user?.role === 'doctor' ? t('doctorUser') : t('patientRole')}
                 </Text>
               </View>
            </View>
@@ -89,16 +98,19 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         {user?.role === 'user' && (
           <GlassCard style={styles.progressCard}>
             <View style={styles.progressHeader}>
-                <Text style={styles.pointsText}>{t('pointsToNext')}</Text>
-                <Text style={styles.progressPercent}>{Math.round(progress * 100)}%</Text>
+                <Text style={styles.pointsText}>
+                  {missingFields > 0 ? `${t('completeProfileHint')} ${missingFields}` : t('profileComplete')}
+                </Text>
+                <Text style={styles.progressPercent}>{profileCompletion}%</Text>
             </View>
             <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, { width: `${progress * 100}%` }]} />
+                <View style={[styles.progressBarFill, { width: `${profileCompletion}%` }]} />
             </View>
             <View style={styles.levelLabels}>
-                <Text style={styles.levelLabel}>{t('silver')}</Text>
-                <Text style={styles.levelLabelActive}>{t('gold')}</Text>
-                <Text style={styles.levelLabel}>{t('platinum')}</Text>
+                <Text style={styles.levelLabel}>{t('profileCompletion')}</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('EditProfile')}>
+                  <Text style={styles.levelLabelActive}>{t('editProfile')}</Text>
+                </TouchableOpacity>
             </View>
           </GlassCard>
         )}
@@ -196,7 +208,6 @@ const styles = StyleSheet.create({
   avatarContainer: { position: 'relative', width: 110, height: 110, justifyContent: 'center', alignItems: 'center' },
   avatarCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: COLORS.bgCard, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
   avatarEmoji: { fontSize: 40 },
-  progressRing: { position: 'absolute', width: 106, height: 106, borderRadius: 53, borderWidth: 4, borderColor: 'rgba(255,255,255,0.05)', backgroundColor: 'transparent' },
   levelInfo: { marginRight: 20, alignItems: 'flex-start' },
   name: { color: COLORS.textPrimary, fontSize: 22, fontWeight: 'bold' },
   levelBadge: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.accentWarm, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginTop: 8 },
