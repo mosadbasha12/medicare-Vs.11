@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Swi
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor } from '../utils/localDataService';
-import { ADMIN_EMAIL, ADMIN_PASSWORD_LABEL, clearSession, getPasswordResetRequests, resolvePasswordResetRequest } from '../utils/storage';
+import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission } from '../utils/localDataService';
+import { clearSession, getPasswordResetRequests, getPermissionLabel, resolvePasswordResetRequest } from '../utils/storage';
 import { useUser } from '../context/UserContext';
 import type { PasswordResetRequest } from '../types';
 
@@ -37,6 +37,7 @@ export default function AdminDashboard({ navigation }: any) {
   const [resetRequests, setResetRequests] = useState<PasswordResetRequest[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'resets'>('overview');
   const [loading, setLoading] = useState(true);
+  const isOwner = user?.role === 'owner';
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -125,6 +126,20 @@ export default function AdminDashboard({ navigation }: any) {
     });
   };
 
+  const handleSetAdmin = (target: any, makeAdmin: boolean) => {
+    showConfirmation(
+      makeAdmin ? 'منح صلاحية أدمن' : 'إلغاء صلاحية أدمن',
+      makeAdmin
+        ? `هل تريد جعل "${target.name}" أدمن؟`
+        : `هل تريد إلغاء صلاحية الأدمن من "${target.name}"؟`,
+      async () => {
+        const success = await setUserAdminPermission(target.uid, makeAdmin, user?.role);
+        showInfo(success ? 'تم' : 'خطأ', success ? 'تم تحديث الصلاحية بنجاح.' : 'فشل تحديث الصلاحية. هذه العملية متاحة للأونر فقط.');
+        fetchData();
+      }
+    );
+  };
+
   const handleApproveDoctor = async (uid: string, name: string) => {
     const success = await approveDoctor(uid);
     if (success) {
@@ -147,6 +162,7 @@ export default function AdminDashboard({ navigation }: any) {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case 'owner': return 'أونر';
       case 'admin': return 'مسؤول';
       case 'doctor': return 'طبيب';
       case 'user': return 'مريض';
@@ -156,6 +172,7 @@ export default function AdminDashboard({ navigation }: any) {
 
   const getRoleColor = (role: string) => {
     switch (role) {
+      case 'owner': return COLORS.accentWarm;
       case 'admin': return COLORS.danger;
       case 'doctor': return COLORS.secondary;
       case 'user': return COLORS.primaryLight;
@@ -185,7 +202,7 @@ export default function AdminDashboard({ navigation }: any) {
           <Ionicons name="shield-checkmark" size={24} color={COLORS.danger} />
           <Text style={styles.adminName}>{user?.name}</Text>
           <Text style={styles.adminEmail}>{user?.email}</Text>
-          <Text style={styles.adminEmail}>حساب الأدمن: {ADMIN_EMAIL} / {ADMIN_PASSWORD_LABEL}</Text>
+          <Text style={styles.adminEmail}>الصلاحية: {getPermissionLabel(user?.role)}</Text>
         </View>
 
         <View style={styles.tabRow}>
@@ -286,10 +303,10 @@ export default function AdminDashboard({ navigation }: any) {
 
         {!loading && activeTab === 'users' && (
           <>
-            {users.filter((u) => u.role !== 'admin').length === 0 ? (
+            {users.filter((u) => isOwner ? u.role !== 'owner' : u.role !== 'admin' && u.role !== 'owner').length === 0 ? (
               <Text style={styles.emptyText}>لا يوجد مستخدمين حالياً</Text>
             ) : (
-              users.filter((u) => u.role !== 'admin').map((u) => (
+              users.filter((u) => isOwner ? u.role !== 'owner' : u.role !== 'admin' && u.role !== 'owner').map((u) => (
                 <GlassCard key={u.uid} style={styles.userCard}>
                   <View style={styles.userRow}>
                     <View style={styles.userAvatar}>
@@ -312,6 +329,18 @@ export default function AdminDashboard({ navigation }: any) {
                     <View style={[styles.roleBadge, { backgroundColor: getRoleColor(u.role) + '22' }]}>
                       <Text style={[styles.roleBadgeText, { color: getRoleColor(u.role) }]}>{getRoleLabel(u.role)}</Text>
                     </View>
+                  </View>
+                  <View style={styles.permissionLine}>
+                    <Text style={styles.userMeta}>الصلاحية: {getPermissionLabel(u.role)}</Text>
+                    {isOwner && u.role !== 'doctor' && (
+                      <TouchableOpacity
+                        style={[styles.adminPermissionBtn, u.role === 'admin' && styles.adminPermissionBtnDanger]}
+                        onPress={() => handleSetAdmin(u, u.role !== 'admin')}
+                      >
+                        <Ionicons name={u.role === 'admin' ? 'remove-circle-outline' : 'shield-checkmark-outline'} size={16} color="#FFF" />
+                        <Text style={styles.adminPermissionText}>{u.role === 'admin' ? 'إلغاء أدمن' : 'جعله أدمن'}</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <View style={styles.userActions}>
                     <View style={styles.userActionRight}>
@@ -518,6 +547,10 @@ const styles = StyleSheet.create({
   resetNote: { color: COLORS.accentWarm, fontSize: 12, textAlign: 'right', marginTop: 6, fontWeight: 'bold' },
   roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   roleBadgeText: { fontSize: 11, fontWeight: 'bold' },
+  permissionLine: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, gap: 10 },
+  adminPermissionBtn: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, gap: 6 },
+  adminPermissionBtnDanger: { backgroundColor: COLORS.danger },
+  adminPermissionText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
   userActions: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.borderColor },
   userActionRight: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   userActionLabel: { color: COLORS.textSecondary, fontSize: 13 },

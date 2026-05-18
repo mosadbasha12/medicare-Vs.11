@@ -530,6 +530,43 @@ export const toggleUserActive = async (uid: string, isActive: boolean): Promise<
   }
 };
 
+export const setUserAdminPermission = async (
+  uid: string,
+  makeAdmin: boolean,
+  actorRole?: string
+): Promise<boolean> => {
+  if (actorRole !== 'owner') return false;
+
+  try {
+    if (FIREBASE_ENABLED) {
+      const users = await getAllUsers();
+      const target = users.find((u) => u.uid === uid);
+      if (!target || target.role === 'owner' || target.role === 'doctor') return false;
+      await updateDoc(doc(db, 'users', uid), {
+        role: makeAdmin ? 'admin' : 'user',
+        isApproved: true,
+        isActive: true,
+      });
+      return true;
+    }
+
+    const stored = await AsyncStorage.getItem('@medicare_users');
+    if (!stored) return false;
+    const users = JSON.parse(stored);
+    const idx = users.findIndex((u: any) => u.uid === uid);
+    if (idx === -1) return false;
+    if (users[idx].role === 'owner' || users[idx].role === 'doctor') return false;
+
+    users[idx].role = makeAdmin ? 'admin' : 'user';
+    users[idx].isApproved = true;
+    users[idx].isActive = true;
+    await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const deleteUser = async (uid: string): Promise<boolean> => {
   try {
     if (FIREBASE_ENABLED) {

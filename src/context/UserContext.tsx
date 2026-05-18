@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { getStoredUser, initializeAdminAccount } from '../utils/storage';
+import { getStoredUser, initializeAdminAccount, initializeOwnerAccount } from '../utils/storage';
 import type { AppUser } from '../types';
 
 interface UserContextType {
@@ -17,6 +17,7 @@ export const UserProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const loadData = async () => {
       await initializeAdminAccount();
+      await initializeOwnerAccount();
       const savedUser = await getStoredUser();
       if (savedUser) setUser(savedUser);
       setIsLoading(false);

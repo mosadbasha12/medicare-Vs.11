@@ -5,6 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useLanguage } from '../context/LanguageContext';
 import { useUser } from '../context/UserContext';
+import { getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
 
 export default function PrivacySecurityScreen({ navigation }: any) {
   const { user } = useUser();
@@ -16,12 +17,7 @@ export default function PrivacySecurityScreen({ navigation }: any) {
     return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString();
   };
 
-  const roleLabel =
-    user?.role === 'admin'
-      ? t('systemAdmin')
-      : user?.role === 'doctor'
-        ? t('doctorUser')
-        : t('patient');
+  const roleLabel = `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role)}`;
 
   return (
     <SafeAreaView style={styles.safeArea}>

@@ -2,7 +2,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 export type UserLevel = 'برونزي' | 'فضي' | 'ذهبي';
-export type UserRole = 'user' | 'admin' | 'doctor';
+export type UserRole = 'user' | 'admin' | 'doctor' | 'owner';
 export type UserGender = 'male' | 'female';
 
 export interface AppUser {

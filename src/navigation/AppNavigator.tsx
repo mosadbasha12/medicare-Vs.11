@@ -78,6 +78,13 @@ const TabNavigator = () => {
 export default function AppNavigator() {
   const { user, isLoading } = useUser();
   const navKey = user ? `auth-${user.uid}` : 'no-auth';
+  const initialRouteName = user?.role === 'admin' || user?.role === 'owner'
+    ? 'Admin'
+    : user?.role === 'doctor'
+      ? 'DoctorDashboard'
+      : user
+        ? 'MainTabs'
+        : 'Onboarding';
 
   if (isLoading) {
     return (
@@ -91,7 +98,7 @@ export default function AppNavigator() {
     <Stack.Navigator
       key={navKey}
       screenOptions={{ headerShown: false }}
-      initialRouteName={user ? 'MainTabs' : 'Onboarding'}
+      initialRouteName={initialRouteName}
     >
       {user ? (
         <>

@@ -4,7 +4,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
-import { clearSession as logoutFromStorage } from '../utils/storage';
+import { clearSession as logoutFromStorage, getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
 import { useLanguage } from '../context/LanguageContext';
 
 interface ProfileScreenProps {
@@ -39,9 +39,15 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const avatarEmoji =
     user?.role === 'admin'
       ? gender === 'female' ? '👩‍💼' : '👨‍💼'
+      : user?.role === 'owner'
+        ? gender === 'female' ? '👩‍💼' : '👨‍💼'
       : user?.role === 'doctor'
         ? gender === 'female' ? '👩‍⚕️' : '👨‍⚕️'
         : gender === 'female' ? '👩' : '👨';
+
+  const roleBadgeText = user?.role === 'doctor'
+    ? `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role)}`
+    : `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role)}`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -65,13 +71,13 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
                 user?.role === 'doctor' && { backgroundColor: COLORS.secondary },
               ]}>
                 <FontAwesome5 
-                  name={user?.role === 'admin' ? "user-shield" : user?.role === 'doctor' ? "stethoscope" : "crown"} 
+                  name={user?.role === 'admin' || user?.role === 'owner' ? "user-shield" : user?.role === 'doctor' ? "stethoscope" : "user"} 
                   size={10} 
                   color="#FFF" 
                   style={{ marginLeft: 4 }} 
                 />
                 <Text style={styles.levelText}>
-                  {user?.role === 'admin' ? t('systemAdmin') : user?.role === 'doctor' ? t('doctorUser') : t('patientRole')}
+                  {roleBadgeText}
                 </Text>
               </View>
            </View>
@@ -88,7 +94,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            </TouchableOpacity>
         )}
 
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || user?.role === 'owner') && (
            <TouchableOpacity style={styles.adminPanelBtn} onPress={() => navigation.navigate('Admin')}>
               <MaterialCommunityIcons name="view-dashboard-outline" size={24} color="#FFF" />
               <View style={styles.adminPanelTexts}>
