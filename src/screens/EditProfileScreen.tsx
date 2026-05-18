@@ -21,7 +21,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
   const [weight, setWeight] = useState(String(user?.weight ?? 0));
   const [bloodType, setBloodType] = useState(user?.bloodType || '');
   const [loading, setLoading] = useState(false);
-  const isPatient = user?.role === 'user';
+  const showHealthFields = user?.role !== 'doctor';
 
   const handleSave = async () => {
     if (!user) return;
@@ -31,7 +31,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
     }
 
     const parsedWeight = Number(weight.replace(',', '.'));
-    if (isPatient && (!Number.isFinite(parsedWeight) || parsedWeight < 0)) {
+    if (showHealthFields && (!Number.isFinite(parsedWeight) || parsedWeight < 0)) {
       Alert.alert('تنبيه', 'الرجاء إدخال وزن صحيح');
       return;
     }
@@ -39,7 +39,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
     const updates = {
       name: name.trim(),
       phone: phone.trim(),
-      ...(isPatient ? { weight: parsedWeight, bloodType } : {}),
+      ...(showHealthFields ? { weight: parsedWeight, bloodType } : {}),
     };
 
     setLoading(true);
@@ -80,7 +80,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
           <Text style={styles.label}>رقم الهاتف</Text>
           <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="05XXXXXXXX" placeholderTextColor={COLORS.textSecondary} keyboardType="phone-pad" editable={!loading} />
 
-          {isPatient && (
+          {showHealthFields && (
             <>
               <Text style={styles.label}>الوزن (كج)</Text>
               <TextInput style={styles.input} value={weight} onChangeText={setWeight} placeholder="0" placeholderTextColor={COLORS.textSecondary} keyboardType="numeric" editable={!loading} />
