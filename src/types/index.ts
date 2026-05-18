@@ -21,6 +21,9 @@ export interface AppUser {
   clinicLocation?: string;
   emailVerified?: boolean;
   phoneVerified?: boolean;
+  weight?: number;
+  bloodType?: string;
+  consultationsCount?: number;
   createdAt: string;
 }
 

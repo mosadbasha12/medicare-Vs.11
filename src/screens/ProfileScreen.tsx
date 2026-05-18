@@ -18,6 +18,9 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   
   const progress = 0.75; 
   const pointsToNext = 250;
+  const consultationsCount = user?.consultationsCount ?? 0;
+  const bloodType = user?.bloodType || '--';
+  const weight = user?.weight ?? 0;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -93,17 +96,17 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
 
         <View style={styles.statsRow}>
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '120' : '12'}</Text>
+             <Text style={styles.statVal}>{user?.role === 'doctor' ? '120' : consultationsCount}</Text>
              <Text style={styles.statLbl}>{user?.role === 'doctor' ? 'مريض' : 'استشارة'}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '4.9' : 'A+'}</Text>
+             <Text style={styles.statVal}>{user?.role === 'doctor' ? '4.9' : bloodType}</Text>
              <Text style={styles.statLbl}>{user?.role === 'doctor' ? 'تقييم' : 'فصيلة الدم'}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '8' : '78'}</Text>
+             <Text style={styles.statVal}>{user?.role === 'doctor' ? '8' : weight}</Text>
              <Text style={styles.statLbl}>{user?.role === 'doctor' ? 'خبير' : 'الوزن (كج)'}</Text>
            </View>
         </View>

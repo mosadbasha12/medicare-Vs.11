@@ -7,6 +7,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  increment,
   query,
   setDoc,
   updateDoc,
@@ -245,6 +246,41 @@ export const getDoctorAppointments = async (doctorId: string): Promise<DoctorApp
   return allAppointments;
 };
 
+const updateCachedUser = async (uid: string, updates: Record<string, any>): Promise<void> => {
+  const stored = await AsyncStorage.getItem('@medicare_users');
+  if (stored) {
+    const users = JSON.parse(stored);
+    const idx = users.findIndex((u: any) => u.uid === uid);
+    if (idx > -1) {
+      users[idx] = { ...users[idx], ...updates };
+      await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+    }
+  }
+
+  const session = await AsyncStorage.getItem('@medicare_session');
+  if (session) {
+    const current = JSON.parse(session);
+    if (current.uid === uid) {
+      await AsyncStorage.setItem('@medicare_session', JSON.stringify({ ...current, ...updates }));
+    }
+  }
+};
+
+const incrementConsultationsCount = async (userId: string): Promise<void> => {
+  try {
+    if (FIREBASE_ENABLED) {
+      await updateDoc(doc(db, 'users', userId), { consultationsCount: increment(1) });
+    }
+
+    const session = await AsyncStorage.getItem('@medicare_session');
+    const current = session ? JSON.parse(session) : null;
+    const nextCount = (current?.uid === userId ? current.consultationsCount ?? 0 : 0) + 1;
+    await updateCachedUser(userId, { consultationsCount: nextCount });
+  } catch (error) {
+    console.error('Increment consultations count error:', error);
+  }
+};
+
 export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<boolean> => {
   if (FIREBASE_ENABLED) {
     try {
@@ -268,6 +304,7 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
   const newApt = { ...apt, id: `apt_${Date.now()}` };
   existing.push(newApt);
   await AsyncStorage.setItem(`@appointments_${userId}`, JSON.stringify(existing));
+  await incrementConsultationsCount(userId);
   return true;
 };
 
@@ -564,20 +601,12 @@ export const updateUserProfile = async (
   try {
     if (FIREBASE_ENABLED) {
       await updateDoc(doc(db, 'users', uid), updates);
+      await updateCachedUser(uid, updates);
       return true;
     }
 
-    const stored = await AsyncStorage.getItem('@medicare_users');
-    if (stored) {
-      const users = JSON.parse(stored);
-      const idx = users.findIndex((u: any) => u.uid === uid);
-      if (idx > -1) {
-        users[idx] = { ...users[idx], ...updates };
-        await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
-        return true;
-      }
-    }
-    return false;
+    await updateCachedUser(uid, updates);
+    return true;
   } catch {
     return false;
   }

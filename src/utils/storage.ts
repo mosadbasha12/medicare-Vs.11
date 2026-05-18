@@ -195,6 +195,9 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     clinicLocation: user.clinicLocation,
     emailVerified,
     phoneVerified: user.phoneVerified,
+    weight: user.role === 'user' ? user.weight ?? 0 : user.weight,
+    bloodType: user.role === 'user' ? user.bloodType ?? '' : user.bloodType,
+    consultationsCount: user.role === 'user' ? user.consultationsCount ?? 0 : user.consultationsCount,
     createdAt: new Date().toISOString(),
   };
   const userWithPass = { ...newUser, password: hashedPassword };
@@ -313,6 +316,9 @@ export const signInWithGoogleInDB = async (
         isActive: true,
         isApproved: true,
         phone: firebaseUser.phoneNumber || '',
+        weight: 0,
+        bloodType: '',
+        consultationsCount: 0,
         emailVerified: firebaseUser.emailVerified,
         phoneVerified: Boolean(firebaseUser.phoneNumber),
         createdAt: new Date().toISOString(),
@@ -325,6 +331,11 @@ export const signInWithGoogleInDB = async (
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
+        ...(userData.role === 'user' || !userData.role ? {
+          weight: userData.weight ?? 0,
+          bloodType: userData.bloodType ?? '',
+          consultationsCount: userData.consultationsCount ?? 0,
+        } : {}),
       }), { merge: true });
       userData = {
         ...userData,
@@ -333,6 +344,11 @@ export const signInWithGoogleInDB = async (
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
+        ...(userData.role === 'user' || !userData.role ? {
+          weight: userData.weight ?? 0,
+          bloodType: userData.bloodType ?? '',
+          consultationsCount: userData.consultationsCount ?? 0,
+        } : {}),
       };
     }
 
@@ -388,6 +404,9 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         isActive: true,
         isApproved: true,
         phone: firebaseUser.phoneNumber || '',
+        weight: 0,
+        bloodType: '',
+        consultationsCount: 0,
         emailVerified: true,
         phoneVerified: Boolean(firebaseUser.phoneNumber),
         createdAt: new Date().toISOString(),
@@ -400,6 +419,11 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
+        ...(userData.role === 'user' || !userData.role ? {
+          weight: userData.weight ?? 0,
+          bloodType: userData.bloodType ?? '',
+          consultationsCount: userData.consultationsCount ?? 0,
+        } : {}),
       }), { merge: true });
       userData = {
         ...userData,
@@ -408,6 +432,11 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         emailLower,
         name: userData.name || firebaseUser.displayName || email.split('@')[0],
         emailVerified: true,
+        ...(userData.role === 'user' || !userData.role ? {
+          weight: userData.weight ?? 0,
+          bloodType: userData.bloodType ?? '',
+          consultationsCount: userData.consultationsCount ?? 0,
+        } : {}),
       };
     }
 
