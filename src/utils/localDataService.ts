@@ -6,6 +6,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   increment,
   query,
@@ -14,6 +15,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import type { AppUser, Currency } from '../types';
 
 const FIREBASE_ENABLED = Boolean(
   process.env.EXPO_PUBLIC_FIREBASE_API_KEY &&
@@ -54,6 +56,29 @@ export interface ChatSummary {
   messagesCount: number;
 }
 
+export interface PlatformSettings {
+  commissionRate: number;
+  instapayHandle: string;
+}
+
+export interface PaidAppointmentInput extends Omit<Appointment, 'id'> {
+  price: number;
+  currency: Currency;
+}
+
+export type PaidAppointmentResult =
+  | { status: 'success'; updatedUser: AppUser; platformFee: number; doctorNet: number }
+  | { status: 'insufficient_balance'; required: number; balance: number }
+  | { status: 'doctor_not_found' }
+  | { status: 'failed' };
+
+const PLATFORM_SETTINGS_KEY = '@platform_settings';
+const PLATFORM_BALANCE_KEY = '@platform_balance';
+const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
+  commissionRate: 5,
+  instapayHandle: 'medicare@instapay',
+};
+
 const DEFAULT_DOCTORS: Doctor[] = [
   { id: '1', name: 'د. سارة ميتشيل', specialty: 'أخصائية قلب', rating: 4.9, emoji: '👩‍⚕️', available: true, price: 50 },
   { id: '2', name: 'د. أوين برادي', specialty: 'جراحة عامة', rating: 4.7, emoji: '👨‍⚕️', available: true, price: 70 },
@@ -73,7 +98,8 @@ export const getAllDoctors = async (): Promise<Doctor[]> => {
           rating: 5.0,
           emoji: '👨‍⚕️',
           available: u.isActive !== false,
-          price: 60,
+          price: u.doctorVideoPrice ?? 60,
+          currency: u.currency || 'EGP',
         };
       });
       return [...DEFAULT_DOCTORS, ...registeredDoctors.filter((rd) => !DEFAULT_DOCTORS.some((d) => d.id === rd.id))];
@@ -101,6 +127,7 @@ export const getAllDoctors = async (): Promise<Doctor[]> => {
       emoji: '👨‍⚕️',
       available: true,
       price: 60,
+      currency: u.currency || 'EGP',
     }))
     .filter((rd) => !defaultDoctors.some((d) => d.id === rd.id));
 
@@ -133,6 +160,7 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
         emoji: '👨‍⚕️',
         available: doctorUser.isApproved !== false,
         price: 60,
+        currency: doctorUser.currency || 'EGP',
       }, { merge: true });
       return true;
     }
@@ -148,6 +176,7 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
       emoji: '👨‍⚕️',
       available: doctorUser.isApproved !== false,
       price: 60,
+      currency: doctorUser.currency || 'EGP',
     };
     if (doctorUser.isApproved !== false) {
       doctors.push(newDoctor);
@@ -166,6 +195,125 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
     return true;
   } catch {
     return false;
+  }
+};
+
+export const getPlatformSettings = async (): Promise<PlatformSettings> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDoc(doc(db, 'settings', 'platform'));
+      if (snap.exists()) return { ...DEFAULT_PLATFORM_SETTINGS, ...(snap.data() as Partial<PlatformSettings>) };
+    } catch (error) {
+      console.error('Firebase getPlatformSettings error:', error);
+    }
+  }
+
+  const stored = await AsyncStorage.getItem(PLATFORM_SETTINGS_KEY);
+  return stored ? { ...DEFAULT_PLATFORM_SETTINGS, ...JSON.parse(stored) } : DEFAULT_PLATFORM_SETTINGS;
+};
+
+export const updatePlatformSettings = async (settings: PlatformSettings, actorRole?: string): Promise<boolean> => {
+  if (actorRole !== 'owner') return false;
+  const cleanSettings: PlatformSettings = {
+    commissionRate: Math.max(0, Math.min(30, Number(settings.commissionRate) || 0)),
+    instapayHandle: settings.instapayHandle.trim() || DEFAULT_PLATFORM_SETTINGS.instapayHandle,
+  };
+
+  try {
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'settings', 'platform'), cleanSettings, { merge: true });
+    }
+    await AsyncStorage.setItem(PLATFORM_SETTINGS_KEY, JSON.stringify(cleanSettings));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const addPlatformBalance = async (amount: number): Promise<void> => {
+  const currentStr = await AsyncStorage.getItem(PLATFORM_BALANCE_KEY);
+  const current = currentStr ? Number(currentStr) : 0;
+  await AsyncStorage.setItem(PLATFORM_BALANCE_KEY, String(Number((current + amount).toFixed(2))));
+};
+
+const saveUsersWithSession = async (users: any[], sessionUser?: any): Promise<void> => {
+  await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+  if (sessionUser) {
+    const { password, ...safeUser } = sessionUser;
+    await AsyncStorage.setItem('@medicare_session', JSON.stringify(safeUser));
+  }
+};
+
+export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<PaidAppointmentResult> => {
+  try {
+    const settings = await getPlatformSettings();
+    const platformFee = Number((apt.price * settings.commissionRate / 100).toFixed(2));
+    const doctorNet = Number((apt.price - platformFee).toFixed(2));
+
+    if (FIREBASE_ENABLED) {
+      const users = await getAllUsers();
+      const patient = users.find((u) => u.uid === apt.userId);
+      const doctor = users.find((u) => u.uid === apt.doctorId);
+      if (!patient || (patient.balance ?? 0) < apt.price) {
+        return { status: 'insufficient_balance', required: apt.price, balance: patient?.balance ?? 0 };
+      }
+
+      await addDoc(collection(db, 'appointments'), {
+        ...apt,
+        patientId: apt.userId,
+        patientName: patient?.name || 'مريض',
+        platformFee,
+        doctorNet,
+        paidAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      });
+      await updateDoc(doc(db, 'users', apt.userId), {
+        balance: Number(((patient.balance ?? 0) - apt.price).toFixed(2)),
+        consultationsCount: increment(1),
+      });
+      if (doctor) {
+        await updateDoc(doc(db, 'users', apt.doctorId), {
+          balance: Number(((doctor.balance ?? 0) + doctorNet).toFixed(2)),
+        });
+      }
+      const updatedUser = { ...patient, balance: Number(((patient.balance ?? 0) - apt.price).toFixed(2)), consultationsCount: (patient.consultationsCount ?? 0) + 1 };
+      await updateCachedUser(apt.userId, { balance: updatedUser.balance, consultationsCount: updatedUser.consultationsCount });
+      await addPlatformBalance(platformFee);
+      return { status: 'success', updatedUser, platformFee, doctorNet };
+    }
+
+    const stored = await AsyncStorage.getItem('@medicare_users');
+    if (!stored) return { status: 'failed' };
+    const users = JSON.parse(stored);
+    const patientIdx = users.findIndex((u: any) => u.uid === apt.userId);
+    const doctorIdx = users.findIndex((u: any) => u.uid === apt.doctorId);
+    if (patientIdx === -1 || (users[patientIdx].balance ?? 0) < apt.price) {
+      return { status: 'insufficient_balance', required: apt.price, balance: users[patientIdx]?.balance ?? 0 };
+    }
+
+    users[patientIdx].balance = Number(((users[patientIdx].balance ?? 0) - apt.price).toFixed(2));
+    users[patientIdx].consultationsCount = (users[patientIdx].consultationsCount ?? 0) + 1;
+    if (doctorIdx > -1) {
+      users[doctorIdx].balance = Number(((users[doctorIdx].balance ?? 0) + doctorNet).toFixed(2));
+    }
+
+    const newApt = {
+      ...apt,
+      id: `apt_${Date.now()}`,
+      platformFee,
+      doctorNet,
+      paidAt: new Date().toISOString(),
+    };
+    const existing = await getUserAppointments(apt.userId);
+    existing.push(newApt);
+    await AsyncStorage.setItem(`@appointments_${apt.userId}`, JSON.stringify(existing));
+    await saveUsersWithSession(users, users[patientIdx]);
+    await addPlatformBalance(platformFee);
+    const { password, ...updatedUser } = users[patientIdx];
+    return { status: 'success', updatedUser, platformFee, doctorNet };
+  } catch (error) {
+    console.error('createPaidAppointment error:', error);
+    return { status: 'failed' };
   }
 };
 

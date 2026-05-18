@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, Platform, TextInput } from 'react-native';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions } from '../utils/localDataService';
+import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions, getPlatformSettings, updatePlatformSettings } from '../utils/localDataService';
 import { clearSession, getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
 import { useUser } from '../context/UserContext';
 import type { AdminPermission } from '../types';
@@ -34,7 +34,9 @@ export default function AdminDashboard({ navigation }: any) {
   const [stats, setStats] = useState({ totalUsers: 0, totalDoctors: 0, totalAppointments: 0, totalPatients: 0, pendingDoctors: 0 });
   const [users, setUsers] = useState<any[]>([]);
   const [pendingDoctors, setPendingDoctors] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'settings'>('overview');
+  const [commissionRate, setCommissionRate] = useState('5');
+  const [instapayHandle, setInstapayHandle] = useState('medicare@instapay');
   const [loading, setLoading] = useState(true);
   const isOwner = user?.role === 'owner';
   const adminPermissions = user?.adminPermissions || ['approveDoctors'];
@@ -46,6 +48,7 @@ export default function AdminDashboard({ navigation }: any) {
     { key: 'users' as const, label: 'الحسابات', visible: canManageUsers },
     { key: 'pending' as const, label: 'طلبات الأطباء', visible: canApproveDoctors },
     { key: 'doctors' as const, label: 'الأطباء', visible: canManageDoctors },
+    { key: 'settings' as const, label: 'الدفع', visible: isOwner },
   ].filter((tab) => tab.visible);
   const permissionOptions: { key: AdminPermission; label: string }[] = [
     { key: 'approveDoctors', label: 'قبول ورفض الأطباء' },
@@ -76,6 +79,9 @@ export default function AdminDashboard({ navigation }: any) {
       });
       setUsers(allUsers);
       setPendingDoctors(pending);
+      const settings = await getPlatformSettings();
+      setCommissionRate(String(settings.commissionRate));
+      setInstapayHandle(settings.instapayHandle);
     } catch (e) {
       console.error('Error fetching admin data:', e);
     }
@@ -147,6 +153,16 @@ export default function AdminDashboard({ navigation }: any) {
       showInfo('تم', `تم اعتماد الدكتور "${name}"\nأصبح متاحاً الآن للمرضى`);
       fetchData();
     }
+  };
+
+  const handleSavePaymentSettings = async () => {
+    const parsedRate = Number(commissionRate.replace(',', '.'));
+    if (!Number.isFinite(parsedRate) || parsedRate < 0 || parsedRate > 30) {
+      showInfo('تنبيه', 'النسبة لازم تكون بين 0 و 30%.');
+      return;
+    }
+    const success = await updatePlatformSettings({ commissionRate: parsedRate, instapayHandle }, user?.role);
+    showInfo(success ? 'تم' : 'خطأ', success ? 'تم حفظ إعدادات الدفع والعمولة.' : 'فشل حفظ الإعدادات. متاح للأونر فقط.');
   };
 
   const handleRejectDoctor = (uid: string, name: string) => {
@@ -276,8 +292,45 @@ export default function AdminDashboard({ navigation }: any) {
                   <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
                 </View>
               </TouchableOpacity>}
+              {isOwner && <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('settings')}>
+                <View style={styles.actionRight}>
+                  <View style={[styles.actionIconBox, { backgroundColor: COLORS.danger + '22' }]}>
+                    <MaterialCommunityIcons name="cash-multiple" size={20} color={COLORS.danger} />
+                  </View>
+                  <Text style={styles.actionLabel}>إعدادات الدفع والعمولة</Text>
+                </View>
+                <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>}
             </GlassCard>
           </>
+        )}
+
+        {!loading && activeTab === 'settings' && isOwner && (
+          <GlassCard style={styles.settingsCard}>
+            <Text style={styles.settingsTitle}>إعدادات عمولة التطبيق</Text>
+            <Text style={styles.settingsHint}>هذه النسبة تظهر للمرضى والأطباء ويتم خصمها من قيمة كل استشارة أو حجز.</Text>
+            <Text style={styles.settingsLabel}>نسبة التطبيق (%)</Text>
+            <TextInput
+              style={styles.settingsInput}
+              value={commissionRate}
+              onChangeText={setCommissionRate}
+              keyboardType="numeric"
+              placeholder="5"
+              placeholderTextColor={COLORS.textMuted}
+            />
+            <Text style={styles.settingsLabel}>حساب Instapay لاستقبال التحويلات</Text>
+            <TextInput
+              style={styles.settingsInput}
+              value={instapayHandle}
+              onChangeText={setInstapayHandle}
+              placeholder="medicare@instapay"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity style={styles.saveSettingsBtn} onPress={handleSavePaymentSettings}>
+              <Text style={styles.saveSettingsText}>حفظ إعدادات الدفع</Text>
+            </TouchableOpacity>
+          </GlassCard>
         )}
 
         {!loading && activeTab === 'users' && canManageUsers && (
@@ -549,4 +602,11 @@ const styles = StyleSheet.create({
   doctorMedId: { color: COLORS.textMuted, fontSize: 11, marginTop: 2, textAlign: 'right' },
   doctorFooter: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingTop: 10 },
   doctorEmail: { color: COLORS.textSecondary, fontSize: 12 },
+  settingsCard: { padding: 18, marginBottom: 18 },
+  settingsTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right', marginBottom: 8 },
+  settingsHint: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', lineHeight: 18, marginBottom: 16 },
+  settingsLabel: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'right', marginBottom: 8 },
+  settingsInput: { color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 14, textAlign: 'right' },
+  saveSettingsBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  saveSettingsText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
 });

@@ -4,8 +4,9 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createAppointment } from '../utils/localDataService';
+import { createPaidAppointment, getPlatformSettings } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
+import type { Currency } from '../types';
 
 const TIME_SLOTS = [
   '09:00 ص', '09:30 ص', '10:00 ص', '10:30 ص',
@@ -77,7 +78,10 @@ export default function BookingScreen({ navigation, route }: any) {
   const doctorName = route?.params?.doctorName || t('doctor');
   const doctorId = route?.params?.doctorId || '';
   const doctorSpec = route?.params?.doctorSpec || '';
-  const doctorPrice = route?.params?.doctorPrice || 50;
+  const doctorPrice = Number(route?.params?.doctorPrice || 50);
+  const doctorClinicPrice = Number(route?.params?.doctorClinicPrice || doctorPrice);
+  const currency: Currency = user?.currency || route?.params?.currency || 'EGP';
+  const currencySymbol = currency === 'EGP' ? 'ج.م' : '$';
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedTime, setSelectedTime] = useState<string>('');
@@ -87,9 +91,17 @@ export default function BookingScreen({ navigation, route }: any) {
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [loading, setLoading] = useState(false);
+  const [commissionRate, setCommissionRate] = useState(5);
 
   const monthDates = getMonthDates(visibleMonth);
   const yearOptions = getYearOptions(visibleMonth.getFullYear());
+  const bookingPrice = selectedType === 'clinic' ? doctorClinicPrice : doctorPrice;
+  const platformFee = Number((bookingPrice * commissionRate / 100).toFixed(2));
+  const doctorNet = Number((bookingPrice - platformFee).toFixed(2));
+
+  React.useEffect(() => {
+    getPlatformSettings().then((settings) => setCommissionRate(settings.commissionRate));
+  }, []);
 
   const handleBook = async () => {
     if (!selectedDate) {
@@ -106,7 +118,7 @@ export default function BookingScreen({ navigation, route }: any) {
     }
 
     setLoading(true);
-    const success = await createAppointment({
+    const result = await createPaidAppointment({
       userId: user.uid,
       doctorId,
       doctorName,
@@ -114,15 +126,23 @@ export default function BookingScreen({ navigation, route }: any) {
       time: selectedTime,
       type: selectedType === 'video' ? 'مكالمة فيديو' : 'زيارة عيادة',
       status: 'قادم',
+      price: bookingPrice,
+      currency,
     });
 
     setLoading(false);
 
-    if (success) {
-      setUser({ ...user, consultationsCount: (user.consultationsCount ?? 0) + 1 });
-      showAlert(t('bookingSuccess'), `${t('bookingSuccess')} ${doctorName}\n${t('dateLabel')}: ${getArabicDate(selectedDate)}\n${t('timeLabel')}: ${selectedTime}`, () => {
+    if (result.status === 'success') {
+      setUser(result.updatedUser);
+      showAlert(t('bookingSuccess'), `${t('bookingSuccess')} ${doctorName}\n${t('dateLabel')}: ${getArabicDate(selectedDate)}\n${t('timeLabel')}: ${selectedTime}\nتم خصم: ${bookingPrice} ${currencySymbol}\nرسوم التطبيق: ${result.platformFee} ${currencySymbol}`, () => {
         navigation.goBack();
       });
+    } else if (result.status === 'insufficient_balance') {
+      showAlert('الرصيد غير كافي', `رصيدك الحالي ${result.balance.toFixed(2)} ${currencySymbol}\nالمطلوب ${result.required.toFixed(2)} ${currencySymbol}\nاشحن حسابك أولاً عشان تقدر تدفع الحجز.`, () => {
+        navigation.navigate('Payment');
+      });
+    } else if (result.status === 'doctor_not_found') {
+      showAlert(t('error'), 'تعذر العثور على حساب الطبيب لتحويل صافي الحجز.');
     } else {
       showAlert(t('error'), t('bookingFailed'));
     }
@@ -148,6 +168,13 @@ export default function BookingScreen({ navigation, route }: any) {
               <Text style={styles.doctorName}>{doctorName}</Text>
               {doctorSpec ? <Text style={styles.doctorSpec}>{doctorSpec}</Text> : null}
             </View>
+          </View>
+          <View style={styles.pricePanel}>
+            <Text style={styles.priceTitle}>تفاصيل الدفع</Text>
+            <Text style={styles.priceLine}>سعر {selectedType === 'clinic' ? 'زيارة العيادة' : 'الاستشارة'}: {bookingPrice.toFixed(2)} {currencySymbol}</Text>
+            <Text style={styles.priceLine}>رسوم التطبيق ({commissionRate}%): {platformFee.toFixed(2)} {currencySymbol}</Text>
+            <Text style={styles.priceLine}>صافي الطبيب: {doctorNet.toFixed(2)} {currencySymbol}</Text>
+            <Text style={styles.feeNotice}>يتم خصم رسوم التطبيق من كل حجز أو استشارة حسب النسبة التي يحددها الأونر.</Text>
           </View>
         </GlassCard>
 
@@ -235,7 +262,7 @@ export default function BookingScreen({ navigation, route }: any) {
           onPress={handleBook}
           disabled={!selectedDate || !selectedTime || loading}
         >
-          <Text style={styles.bookBtnText}>{loading ? t('bookingLoading') : `${t('confirmBooking')} ${doctorPrice > 0 ? `(${doctorPrice}$)` : ''}`}</Text>
+          <Text style={styles.bookBtnText}>{loading ? t('bookingLoading') : `${t('confirmBooking')} (${bookingPrice.toFixed(2)} ${currencySymbol})`}</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -254,6 +281,10 @@ const styles = StyleSheet.create({
   doctorInfo: { flex: 1 },
   doctorName: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right' },
   doctorSpec: { color: COLORS.secondary, fontSize: 14, marginTop: 4, textAlign: 'right' },
+  pricePanel: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: COLORS.borderColor },
+  priceTitle: { color: COLORS.textPrimary, fontSize: 14, fontWeight: 'bold', textAlign: 'right', marginBottom: 8 },
+  priceLine: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 3 },
+  feeNotice: { color: COLORS.accentWarm, fontSize: 11, textAlign: 'right', marginTop: 8, lineHeight: 17 },
   sectionTitle: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', marginBottom: 12, textAlign: 'right' },
   typeRow: { flexDirection: 'row-reverse', gap: 12, marginBottom: 24 },
   typeCard: { flex: 1, paddingVertical: 20, borderRadius: 16, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, alignItems: 'center', gap: 8 },

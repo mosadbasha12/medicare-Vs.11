@@ -5,6 +5,7 @@ export type UserLevel = 'برونزي' | 'فضي' | 'ذهبي';
 export type UserRole = 'user' | 'admin' | 'doctor' | 'owner';
 export type AdminPermission = 'approveDoctors' | 'manageUsers' | 'manageDoctors';
 export type UserGender = 'male' | 'female';
+export type Currency = 'USD' | 'EGP';
 
 export interface AppUser {
   uid: string;
@@ -13,12 +14,15 @@ export interface AppUser {
   level: UserLevel;
   role: UserRole;
   balance: number;
+  currency?: Currency;
   isActive: boolean;
   isApproved: boolean;
   adminPermissions?: AdminPermission[];
   specialty?: string;
   medicalId?: string;
   patientsCount?: number;
+  doctorVideoPrice?: number;
+  doctorClinicPrice?: number;
   phone?: string;
   nationalId?: string;
   clinicLocation?: string;
@@ -54,6 +58,7 @@ export interface Doctor {
   available: boolean;
   bio?: string;
   price: number;
+  currency?: Currency;
 }
 
 export interface Appointment {
@@ -65,6 +70,10 @@ export interface Appointment {
   time: string;
   type: 'مكالمة فيديو' | 'زيارة عيادة';
   status: 'قادم' | 'مكتمل' | 'ملغي';
+  price?: number;
+  currency?: Currency;
+  platformFee?: number;
+  doctorNet?: number;
 }
 
 export interface ChatMessage {

@@ -28,6 +28,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const profileCompletion = Math.round((completedHealthFields / healthFields.length) * 100);
   const hasHealthData = completedHealthFields > 0;
   const consultationsCount = user?.consultationsCount ?? 0;
+  const currencySymbol = user?.currency === 'USD' ? '$' : 'ج.م';
 
   useEffect(() => {
     const fetchData = async () => {
@@ -71,7 +72,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           <StatCard label={t('appointments')} value={String(appointmentsCount)} icon="calendar-check" color={COLORS.primaryLight} bgColor={COLORS.primarySoft} onPress={() => navigation.navigate('المواعيد')} />
           <StatCard label={t('results')} value={String(resultsCount)} icon="flask" color={COLORS.secondary} bgColor={COLORS.secondary + '22'} onPress={() => navigation.navigate('Results')} />
           <StatCard label={t('prescriptions')} value={String(prescriptionsCount)} icon="pills" color={COLORS.accentWarm} bgColor={COLORS.accentWarm + '22'} onPress={() => navigation.navigate('Prescriptions')} />
-          <StatCard label={t('wallet')} value={`${user?.balance?.toFixed(0) || 0}$`} icon="wallet" color={COLORS.danger} bgColor="rgba(227, 26, 26, 0.15)" onPress={() => navigation.navigate('Payment')} />
+          <StatCard label={t('wallet')} value={`${user?.balance?.toFixed(0) || 0} ${currencySymbol}`} icon="wallet" color={COLORS.danger} bgColor="rgba(227, 26, 26, 0.15)" onPress={() => navigation.navigate('Payment')} />
         </View>
 
         <View style={styles.gradientCard}>

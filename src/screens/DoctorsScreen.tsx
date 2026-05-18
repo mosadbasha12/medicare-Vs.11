@@ -9,7 +9,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface DoctorsScreenProps {
   navigation: {
-    navigate: (screen: string, params?: { doctorId?: string; doctorName: string; doctorSpec?: string; doctorPrice?: number }) => void;
+    navigate: (screen: string, params?: { doctorId?: string; doctorName: string; doctorSpec?: string; doctorPrice?: number; doctorClinicPrice?: number; currency?: string }) => void;
     addListener: (event: string, callback: () => void) => () => void;
   };
 }
@@ -82,6 +82,7 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
                 <View style={styles.ratingRow}>
                   <FontAwesome5 name="star" size={12} color={COLORS.accentWarm} solid />
                   <Text style={styles.ratingText}>{item.rating}</Text>
+                  <Text style={styles.priceText}> • {item.price} {item.currency === 'USD' ? '$' : 'ج.م'}</Text>
                 </View>
               </View>
               <View style={styles.actions}>
@@ -93,7 +94,7 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
                 </TouchableOpacity>
                 <TouchableOpacity 
                     style={styles.bookButton}
-                    onPress={() => navigation.navigate('Booking', { doctorId: item.id, doctorName: item.name, doctorSpec: item.specialty, doctorPrice: item.price })}
+                    onPress={() => navigation.navigate('Booking', { doctorId: item.id, doctorName: item.name, doctorSpec: item.specialty, doctorPrice: item.price, doctorClinicPrice: item.price, currency: item.currency })}
                 >
                   <Text style={styles.bookButtonText}>{t('book')}</Text>
                 </TouchableOpacity>
@@ -123,6 +124,7 @@ const styles = StyleSheet.create({
   doctorSpec: { color: COLORS.secondary, fontSize: 13, marginTop: 4, textAlign: 'right' },
   ratingRow: { flexDirection: 'row-reverse', alignItems: 'center', marginTop: 8 },
   ratingText: { color: COLORS.textSecondary, fontSize: 12, marginRight: 6 },
+  priceText: { color: COLORS.accentWarm, fontSize: 12, marginRight: 4, fontWeight: 'bold' },
   actions: { alignItems: 'center' },
   chatIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primarySofter, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   bookButton: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 12 },

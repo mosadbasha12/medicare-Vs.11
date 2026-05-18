@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput } from 'react-native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions } from '../utils/localDataService';
+import { getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions, updateUserProfile, getPlatformSettings } from '../utils/localDataService';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -31,6 +31,9 @@ export default function DoctorDashboard({ navigation }: any) {
   const [stats, setStats] = useState({ totalPatients: 0, upcoming: 0, completed: 0, cancelled: 0 });
   const [activeTab, setActiveTab] = useState<'appointments' | 'schedule' | 'prescriptions'>('appointments');
   const [loading, setLoading] = useState(true);
+  const [videoPrice, setVideoPrice] = useState(String(user?.doctorVideoPrice ?? 60));
+  const [clinicPrice, setClinicPrice] = useState(String(user?.doctorClinicPrice ?? user?.doctorVideoPrice ?? 60));
+  const [commissionRate, setCommissionRate] = useState(5);
 
   const fetchData = useCallback(async () => {
     if (!user?.uid) return;
@@ -47,6 +50,27 @@ export default function DoctorDashboard({ navigation }: any) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    getPlatformSettings().then((settings) => setCommissionRate(settings.commissionRate));
+  }, []);
+
+  const handleSavePrices = async () => {
+    if (!user?.uid) return;
+    const nextVideo = Number(videoPrice.replace(',', '.'));
+    const nextClinic = Number(clinicPrice.replace(',', '.'));
+    if (!Number.isFinite(nextVideo) || nextVideo < 0 || !Number.isFinite(nextClinic) || nextClinic < 0) {
+      showInfo('تنبيه', 'اكتب أسعار صحيحة للاستشارة والحجز.');
+      return;
+    }
+    const success = await updateUserProfile(user.uid, { doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic });
+    if (success) {
+      setUser({ ...user, doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic });
+      showInfo('تم', 'تم تحديث أسعارك بنجاح.');
+    } else {
+      showInfo('خطأ', 'فشل تحديث الأسعار.');
+    }
+  };
 
   const handleStatusChange = async (aptId: string, patientId: string, newStatus: 'مكتمل' | 'ملغي') => {
     showConfirmation(
@@ -99,7 +123,21 @@ export default function DoctorDashboard({ navigation }: any) {
               <Text style={styles.docName}>{user?.name}</Text>
               <Text style={styles.docSpec}>{user?.specialty || 'طبيب عام'}</Text>
               <Text style={styles.docId}>رقم القيد: {user?.medicalId || 'غير محدد'}</Text>
+              <Text style={styles.feeNotice}>التطبيق يخصم {commissionRate}% من كل استشارة أو حجز، وصافي المبلغ يضاف لرصيدك.</Text>
             </View>
+          </View>
+          <View style={styles.priceEditor}>
+            <View style={styles.priceInputGroup}>
+              <Text style={styles.priceLabel}>سعر الاستشارة</Text>
+              <TextInput style={styles.priceInput} value={videoPrice} onChangeText={setVideoPrice} keyboardType="numeric" placeholder="60" placeholderTextColor={COLORS.textMuted} />
+            </View>
+            <View style={styles.priceInputGroup}>
+              <Text style={styles.priceLabel}>سعر زيارة العيادة</Text>
+              <TextInput style={styles.priceInput} value={clinicPrice} onChangeText={setClinicPrice} keyboardType="numeric" placeholder="60" placeholderTextColor={COLORS.textMuted} />
+            </View>
+            <TouchableOpacity style={styles.savePriceBtn} onPress={handleSavePrices}>
+              <Text style={styles.savePriceText}>حفظ الأسعار</Text>
+            </TouchableOpacity>
           </View>
         </GlassCard>
 
@@ -287,6 +325,13 @@ const styles = StyleSheet.create({
   docName: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right' },
   docSpec: { color: COLORS.secondary, fontSize: 14, marginTop: 4, textAlign: 'right' },
   docId: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, textAlign: 'right' },
+  feeNotice: { color: COLORS.accentWarm, fontSize: 11, marginTop: 6, textAlign: 'right', lineHeight: 17 },
+  priceEditor: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.borderColor, gap: 10 },
+  priceInputGroup: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  priceLabel: { color: COLORS.textSecondary, fontSize: 12, flex: 1, textAlign: 'right' },
+  priceInput: { width: 110, color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, textAlign: 'center' },
+  savePriceBtn: { backgroundColor: COLORS.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center', marginTop: 4 },
+  savePriceText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 24, gap: 12 },
   statBox: { width: '22%', padding: 12, alignItems: 'center' },
   statVal: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginVertical: 6 },

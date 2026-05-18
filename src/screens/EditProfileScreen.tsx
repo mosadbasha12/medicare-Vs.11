@@ -6,6 +6,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { updateUserProfile } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
+import type { Currency } from '../types';
 
 interface EditProfileScreenProps {
   navigation: {
@@ -24,6 +25,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
   const [bloodType, setBloodType] = useState(user?.bloodType || '');
   const [age, setAge] = useState(String(user?.age ?? 0));
   const [gender, setGender] = useState<'male' | 'female'>(user?.gender || 'male');
+  const [currency, setCurrency] = useState<Currency>(user?.currency || 'EGP');
   const [loading, setLoading] = useState(false);
   const showHealthFields = user?.role !== 'doctor';
 
@@ -48,6 +50,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
     const updates = {
       name: name.trim(),
       phone: phone.trim(),
+      currency,
       ...(showHealthFields ? { weight: parsedWeight, bloodType, age: parsedAge, gender } : {}),
     };
 
@@ -88,6 +91,18 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
           
           <Text style={styles.label}>{t('phone')}</Text>
           <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="05XXXXXXXX" placeholderTextColor={COLORS.textSecondary} keyboardType="phone-pad" editable={!loading} />
+
+          <Text style={styles.label}>عملة الحساب</Text>
+          <View style={styles.currencyRow}>
+            {(['EGP', 'USD'] as Currency[]).map((item) => {
+              const selected = currency === item;
+              return (
+                <TouchableOpacity key={item} style={[styles.currencyOption, selected && styles.currencyOptionActive]} onPress={() => setCurrency(item)} disabled={loading}>
+                  <Text style={[styles.currencyText, selected && styles.currencyTextActive]}>{item === 'EGP' ? 'جنيه مصري' : 'دولار'}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
           {showHealthFields && (
             <>
@@ -141,6 +156,11 @@ const styles = StyleSheet.create({
   card: { padding: 24, marginBottom: 32 },
   label: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 8, textAlign: 'right' },
   input: { backgroundColor: 'rgba(255,255,255,0.05)', color: COLORS.textPrimary, padding: 16, borderRadius: 12, marginBottom: 20, textAlign: 'right', borderWidth: 1, borderColor: COLORS.borderColor },
+  currencyRow: { flexDirection: 'row-reverse', gap: 10, marginBottom: 20 },
+  currencyOption: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor },
+  currencyOptionActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  currencyText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: 'bold' },
+  currencyTextActive: { color: '#FFF' },
   bloodGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   bloodOption: { minWidth: 64, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor },
   bloodOptionActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

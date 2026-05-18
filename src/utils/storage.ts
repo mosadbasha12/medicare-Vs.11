@@ -90,6 +90,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
         isActive: true,
         isApproved: true,
         balance: 0,
+        currency: 'EGP',
         phone: '',
         emailVerified: true,
         phoneVerified: true,
@@ -129,6 +130,7 @@ export const initializeAdminAccount = async (): Promise<boolean> => {
       isActive: true,
       isApproved: true,
       balance: 0,
+      currency: 'EGP',
       phone: '',
       emailVerified: true,
       phoneVerified: true,
@@ -232,12 +234,15 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     level: user.level,
     role: isOwner ? 'owner' : user.role,
     balance: user.balance,
+    currency: user.currency || 'EGP',
     isActive: user.isActive,
     isApproved: isOwner ? true : user.isApproved,
     adminPermissions: isOwner ? ['approveDoctors', 'manageUsers', 'manageDoctors'] : user.role === 'admin' ? DEFAULT_ADMIN_PERMISSIONS : user.adminPermissions,
     specialty: user.specialty,
     medicalId: user.medicalId,
     patientsCount: user.patientsCount,
+    doctorVideoPrice: user.role === 'doctor' ? user.doctorVideoPrice ?? 60 : user.doctorVideoPrice,
+    doctorClinicPrice: user.role === 'doctor' ? user.doctorClinicPrice ?? 60 : user.doctorClinicPrice,
     phone: user.phone,
     nationalId: user.nationalId,
     clinicLocation: user.clinicLocation,
@@ -293,6 +298,7 @@ export const findUserInDB = async (email: string, pass: string): Promise<AppUser
             role: 'owner',
             adminPermissions: ['approveDoctors', 'manageUsers', 'manageDoctors'],
             balance: 0,
+            currency: 'EGP',
             isActive: true,
             isApproved: true,
             phone: '',
@@ -450,6 +456,7 @@ export const signInWithGoogleInDB = async (
         level: 'برونزي',
         role: 'user',
         balance: 0,
+        currency: 'EGP',
         isActive: true,
         isApproved: true,
         phone: firebaseUser.phoneNumber || '',
@@ -544,6 +551,7 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         level: 'برونزي',
         role: 'user',
         balance: 0,
+        currency: 'EGP',
         isActive: true,
         isApproved: true,
         phone: firebaseUser.phoneNumber || '',
@@ -679,6 +687,9 @@ export const updateUserBalance = async (uid: string, balance: number): Promise<A
   if (idx === -1) return null;
   users[idx].balance = balance;
   await saveAllStoredUsers(users);
+  if (FIREBASE_ENABLED) {
+    await setDoc(doc(db, 'users', uid), { balance }, { merge: true }).catch(() => undefined);
+  }
   const { password, ...userWithoutPass } = users[idx];
   await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userWithoutPass));
   return userWithoutPass;
