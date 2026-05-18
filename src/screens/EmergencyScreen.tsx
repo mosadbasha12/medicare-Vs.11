@@ -30,9 +30,9 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'car-crash', label: 'المرور', number: '128', color: COLORS.primaryLight },
     ],
     fallbackHospitals: [
-      { id: 'kasr-alainy', name: 'مستشفى القصر العيني', address: 'القاهرة • طوارئ 24 ساعة', phone: '123' },
-      { id: 'demerdash', name: 'مستشفى الدمرداش', address: 'العباسية • طوارئ 24 ساعة', phone: '123' },
-      { id: 'ahmed-maher', name: 'مستشفى أحمد ماهر', address: 'مصر القديمة • طوارئ 24 ساعة', phone: '123' },
+      { id: 'kasr-alainy', name: 'مستشفى القصر العيني', address: 'القاهرة • طوارئ 24 ساعة', phone: '123', latitude: 30.0319, longitude: 31.2306 },
+      { id: 'demerdash', name: 'مستشفى الدمرداش', address: 'العباسية • طوارئ 24 ساعة', phone: '123', latitude: 30.0776, longitude: 31.2851 },
+      { id: 'ahmed-maher', name: 'مستشفى أحمد ماهر', address: 'مصر القديمة • طوارئ 24 ساعة', phone: '123', latitude: 30.0444, longitude: 31.2387 },
     ],
   },
   {
@@ -47,9 +47,9 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'car-crash', label: 'المرور', number: '128', color: COLORS.primaryLight },
     ],
     fallbackHospitals: [
-      { id: 'amiri', name: 'المستشفى الأميري الجامعي', address: 'محطة الرمل • طوارئ 24 ساعة', phone: '123' },
-      { id: 'smouha', name: 'مستشفى سموحة الجامعي', address: 'سموحة • طوارئ 24 ساعة', phone: '123' },
-      { id: 'ras-el-tin', name: 'مستشفى رأس التين العام', address: 'بحري • طوارئ 24 ساعة', phone: '123' },
+      { id: 'amiri', name: 'المستشفى الأميري الجامعي', address: 'محطة الرمل • طوارئ 24 ساعة', phone: '123', latitude: 31.2001, longitude: 29.9187 },
+      { id: 'smouha', name: 'مستشفى سموحة الجامعي', address: 'سموحة • طوارئ 24 ساعة', phone: '123', latitude: 31.2071, longitude: 29.9604 },
+      { id: 'ras-el-tin', name: 'مستشفى رأس التين العام', address: 'بحري • طوارئ 24 ساعة', phone: '123', latitude: 31.2079, longitude: 29.8734 },
     ],
   },
   {
@@ -64,9 +64,9 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'car-crash', label: 'المرور', number: '993', color: COLORS.primaryLight },
     ],
     fallbackHospitals: [
-      { id: 'king-saud-medical', name: 'مدينة الملك سعود الطبية', address: 'الرياض • طوارئ 24 ساعة', phone: '997' },
-      { id: 'king-faisal-specialist', name: 'مستشفى الملك فيصل التخصصي', address: 'المعذر • طوارئ 24 ساعة', phone: '997' },
-      { id: 'al-iman', name: 'مستشفى الإيمان العام', address: 'جنوب الرياض • طوارئ 24 ساعة', phone: '997' },
+      { id: 'king-saud-medical', name: 'مدينة الملك سعود الطبية', address: 'الرياض • طوارئ 24 ساعة', phone: '997', latitude: 24.6408, longitude: 46.7178 },
+      { id: 'king-faisal-specialist', name: 'مستشفى الملك فيصل التخصصي', address: 'المعذر • طوارئ 24 ساعة', phone: '997', latitude: 24.6716, longitude: 46.6727 },
+      { id: 'al-iman', name: 'مستشفى الإيمان العام', address: 'جنوب الرياض • طوارئ 24 ساعة', phone: '997', latitude: 24.5929, longitude: 46.7460 },
     ],
   },
   {
@@ -81,9 +81,9 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'phone', label: 'الحالات غير الطارئة', number: '901', color: COLORS.primaryLight },
     ],
     fallbackHospitals: [
-      { id: 'rashid-hospital', name: 'Rashid Hospital', address: 'Dubai • Emergency 24/7', phone: '998' },
-      { id: 'dubai-hospital', name: 'Dubai Hospital', address: 'Deira • Emergency 24/7', phone: '998' },
-      { id: 'latifa-hospital', name: 'Latifa Hospital', address: 'Oud Metha • Emergency 24/7', phone: '998' },
+      { id: 'rashid-hospital', name: 'Rashid Hospital', address: 'Dubai • Emergency 24/7', phone: '998', latitude: 25.2328, longitude: 55.3219 },
+      { id: 'dubai-hospital', name: 'Dubai Hospital', address: 'Deira • Emergency 24/7', phone: '998', latitude: 25.2780, longitude: 55.3192 },
+      { id: 'latifa-hospital', name: 'Latifa Hospital', address: 'Oud Metha • Emergency 24/7', phone: '998', latitude: 25.2339, longitude: 55.3157 },
     ],
   },
   {
@@ -132,33 +132,35 @@ const getHospitalCoords = (item: any): Coordinates | null => {
   return { latitude, longitude };
 };
 
-const fetchNearbyHospitals = async (coords: Coordinates): Promise<Hospital[]> => {
-  const query = `
-    [out:json][timeout:12];
-    (
-      node["amenity"="hospital"](around:25000,${coords.latitude},${coords.longitude});
-      way["amenity"="hospital"](around:25000,${coords.latitude},${coords.longitude});
-      relation["amenity"="hospital"](around:25000,${coords.latitude},${coords.longitude});
-      node["healthcare"="hospital"](around:25000,${coords.latitude},${coords.longitude});
-      way["healthcare"="hospital"](around:25000,${coords.latitude},${coords.longitude});
-      relation["healthcare"="hospital"](around:25000,${coords.latitude},${coords.longitude});
-    );
-    out center tags 30;
-  `;
+const OVERPASS_RADII_METERS = [25000, 50000, 100000, 200000];
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://z.overpass-api.de/api/interpreter',
+];
 
-  const response = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-  if (!response.ok) throw new Error('Failed to load nearby hospitals');
+const buildNearbyHospitalsQuery = (coords: Coordinates, radiusMeters: number) => `
+  [out:json][timeout:18];
+  (
+    node["amenity"="hospital"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    way["amenity"="hospital"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    relation["amenity"="hospital"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    node["healthcare"="hospital"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    way["healthcare"="hospital"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    relation["healthcare"="hospital"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    node["healthcare"="clinic"]["emergency"="yes"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    way["healthcare"="clinic"]["emergency"="yes"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+    relation["healthcare"="clinic"]["emergency"="yes"](around:${radiusMeters},${coords.latitude},${coords.longitude});
+  );
+  out center tags 80;
+`;
 
-  const data = await response.json();
+const parseHospitalElements = (elements: any[], coords: Coordinates): Hospital[] => {
   const seen = new Set<string>();
-  return (data.elements || [])
+  return elements
     .map((item: any) => {
       const hospitalCoords = getHospitalCoords(item);
-      const name = item.tags?.name || item.tags?.['name:ar'] || item.tags?.['name:en'];
+      const name = item.tags?.['name:ar'] || item.tags?.name || item.tags?.['name:en'] || item.tags?.operator;
       if (!hospitalCoords || !name) return null;
       const key = `${name}-${hospitalCoords.latitude.toFixed(4)}-${hospitalCoords.longitude.toFixed(4)}`;
       if (seen.has(key)) return null;
@@ -173,10 +175,51 @@ const fetchNearbyHospitals = async (coords: Coordinates): Promise<Hospital[]> =>
         distanceKm: distanceKm(coords, hospitalCoords),
       } as Hospital;
     })
-    .filter(Boolean)
-    .sort((a: Hospital, b: Hospital) => (a.distanceKm || 0) - (b.distanceKm || 0))
-    .slice(0, 3);
+    .filter((hospital): hospital is Hospital => Boolean(hospital))
+    .sort((a: Hospital, b: Hospital) => (a.distanceKm || 0) - (b.distanceKm || 0));
 };
+
+const fetchNearbyHospitals = async (coords: Coordinates): Promise<Hospital[]> => {
+  let collected: Hospital[] = [];
+  let lastError: unknown = null;
+
+  for (const radiusMeters of OVERPASS_RADII_METERS) {
+    const query = buildNearbyHospitalsQuery(coords, radiusMeters);
+
+    for (const endpoint of OVERPASS_ENDPOINTS) {
+      try {
+        const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`);
+        if (!response.ok) throw new Error(`Overpass ${response.status}`);
+
+        const data = await response.json();
+        collected = parseHospitalElements(data.elements || [], coords);
+        break;
+      } catch (error) {
+        lastError = error;
+        collected = [];
+      }
+    }
+
+    if (collected.length >= 3) break;
+  }
+
+  if (collected.length === 0 && lastError) {
+    throw lastError;
+  }
+
+  return collected.slice(0, 3);
+};
+
+const addDistanceToFallbacks = (fallbackHospitals: Hospital[], coords: Coordinates | null): Hospital[] =>
+  fallbackHospitals
+    .map((hospital) => ({
+      ...hospital,
+      distanceKm: coords && hospital.latitude && hospital.longitude
+        ? distanceKm(coords, { latitude: hospital.latitude, longitude: hospital.longitude })
+        : hospital.distanceKm,
+    }))
+    .sort((a, b) => (a.distanceKm ?? Number.MAX_SAFE_INTEGER) - (b.distanceKm ?? Number.MAX_SAFE_INTEGER))
+    .slice(0, 3);
 
 export default function EmergencyScreen({ navigation }: any) {
   const [region, setRegion] = useState<EmergencyRegion>(EMERGENCY_REGIONS.find((item) => item.id === 'default')!);
@@ -192,13 +235,16 @@ export default function EmergencyScreen({ navigation }: any) {
 
   const openDirections = (hospital: Hospital) => {
     if (!hospital.latitude || !hospital.longitude) {
-      callNumber(hospital.phone || region.primary);
+      const query = encodeURIComponent(`${hospital.name} ${hospital.address}`);
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
       return;
     }
+    const destination = encodeURIComponent(`${hospital.latitude},${hospital.longitude}`);
     const label = encodeURIComponent(hospital.name);
+    const origin = coords ? `&origin=${coords.latitude},${coords.longitude}` : '';
     const url = Platform.OS === 'ios'
-      ? `http://maps.apple.com/?ll=${hospital.latitude},${hospital.longitude}&q=${label}`
-      : `https://www.google.com/maps/search/?api=1&query=${hospital.latitude},${hospital.longitude}`;
+      ? `http://maps.apple.com/?daddr=${destination}&q=${label}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1${origin}&destination=${destination}&travelmode=driving`;
     Linking.openURL(url);
   };
 
@@ -208,14 +254,14 @@ export default function EmergencyScreen({ navigation }: any) {
       const nearby = await fetchNearbyHospitals(nextCoords);
       if (nearby.length > 0) {
         setHospitals(nearby);
-        setLocationStatus(`تم العثور على أقرب ${nearby.length} مستشفيات حسب موقعك الحالي.`);
+        setLocationStatus(`تم العثور على أقرب ${nearby.length} مستشفيات حسب موقعك الحالي حتى لو كانت بعيدة.`);
       } else {
-        setHospitals(nextRegion.fallbackHospitals);
-        setLocationStatus('لم نجد مستشفيات كافية قرب موقعك، يتم عرض بدائل طوارئ موثوقة.');
+        setHospitals(addDistanceToFallbacks(nextRegion.fallbackHospitals, nextCoords));
+        setLocationStatus('لم نجد نتائج كافية من الخريطة، يتم عرض بدائل طوارئ قابلة للفتح على Google Maps.');
       }
     } catch {
-      setHospitals(nextRegion.fallbackHospitals);
-      setLocationStatus('تعذر تحميل المستشفيات من الخريطة الآن، يتم عرض بدائل الطوارئ المتاحة.');
+      setHospitals(addDistanceToFallbacks(nextRegion.fallbackHospitals, nextCoords));
+      setLocationStatus('تعذر تحميل المستشفيات من الخريطة الآن، يتم عرض بدائل طوارئ قابلة للفتح على Google Maps.');
     } finally {
       setLoadingHospitals(false);
     }
@@ -228,7 +274,7 @@ export default function EmergencyScreen({ navigation }: any) {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
         setLocationStatus('لم يتم السماح بالوصول للموقع. فعّل الموقع لعرض أقرب 3 مستشفيات.');
-        setHospitals(region.fallbackHospitals);
+        setHospitals(addDistanceToFallbacks(region.fallbackHospitals, null));
         return;
       }
 

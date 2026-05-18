@@ -6,7 +6,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { updateUserBalance } from '../utils/storage';
 import { useLanguage } from '../context/LanguageContext';
-import { getPlatformSettings, updateUserProfile } from '../utils/localDataService';
+import { getPlatformSettings, recordWalletTransaction, updateUserProfile } from '../utils/localDataService';
 import type { Currency } from '../types';
 
 const showInfo = (title: string, message: string) => {
@@ -42,6 +42,15 @@ export default function PaymentScreen({ navigation }: any) {
     const nextBalance = Number((user.balance + parsedAmount).toFixed(2));
     const updated = await updateUserBalance(user.uid, nextBalance);
     if (updated) {
+      await recordWalletTransaction({
+        userId: user.uid,
+        title: selectedMethod === 'instapay' ? 'شحن رصيد عبر Instapay' : 'شحن رصيد المحفظة',
+        amount: parsedAmount,
+        type: 'in',
+        currency,
+        provider: selectedMethod === 'instapay' ? 'instapay' : 'card',
+        description: 'تمت إضافة الرصيد كتجربة داخل التطبيق.',
+      });
       setUser({ ...updated, currency });
       if (selectedMethod === 'instapay') {
         const settings = await getPlatformSettings();

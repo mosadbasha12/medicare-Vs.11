@@ -35,6 +35,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const weight = user?.weight ?? 0;
   const age = user?.age ?? 0;
   const gender = user?.gender || 'male';
+  const hasAdminAccess = user?.role === 'admin' || user?.role === 'owner' || (user?.adminPermissions?.length || 0) > 0;
 
   const avatarEmoji =
     user?.role === 'doctor'
@@ -42,8 +43,8 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         : gender === 'female' ? '👩' : '👨';
 
   const roleBadgeText = user?.role === 'doctor'
-    ? `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role)}`
-    : `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role)}`;
+    ? `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role, user?.adminPermissions)}`
+    : `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role, user?.adminPermissions)}`;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -90,7 +91,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            </TouchableOpacity>
         )}
 
-        {(user?.role === 'admin' || user?.role === 'owner') && (
+        {hasAdminAccess && (
            <TouchableOpacity style={styles.adminPanelBtn} onPress={() => navigation.navigate('Admin')}>
               <MaterialCommunityIcons name="view-dashboard-outline" size={24} color="#FFF" />
               <View style={styles.adminPanelTexts}>

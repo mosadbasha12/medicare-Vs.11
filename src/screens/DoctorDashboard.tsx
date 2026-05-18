@@ -4,7 +4,19 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions, updateUserProfile, getPlatformSettings } from '../utils/localDataService';
+import { createPrescription, getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions, getUserResults, updateUserProfile, getPlatformSettings } from '../utils/localDataService';
+import type { LabResult } from '../types';
+
+const MEDICINE_CATALOG = [
+  { med: 'باراسيتامول 500mg', dosage: 'قرص بعد الأكل', timesPerDay: 3, durationDays: 3, instructions: 'للحرارة أو الألم. لا تتجاوز الجرعة اليومية.' },
+  { med: 'إيبوبروفين 400mg', dosage: 'قرص بعد الأكل', timesPerDay: 2, durationDays: 3, instructions: 'تجنب استخدامه مع قرحة المعدة إلا بعد مراجعة الطبيب.' },
+  { med: 'أموكسيسيلين/كلافولانات 1g', dosage: 'قرص كل 12 ساعة', timesPerDay: 2, durationDays: 7, instructions: 'يجب إكمال مدة المضاد الحيوي كاملة.' },
+  { med: 'أزيثرومايسين 500mg', dosage: 'قرص يومياً', timesPerDay: 1, durationDays: 3, instructions: 'يفضل في نفس الموعد يومياً.' },
+  { med: 'سيتريزين 10mg', dosage: 'قرص مساءً', timesPerDay: 1, durationDays: 5, instructions: 'قد يسبب النعاس.' },
+  { med: 'أوميبرازول 20mg', dosage: 'كبسولة قبل الإفطار', timesPerDay: 1, durationDays: 14, instructions: 'يؤخذ قبل الأكل بنصف ساعة.' },
+  { med: 'ميتفورمين 500mg', dosage: 'قرص بعد الأكل', timesPerDay: 2, durationDays: 30, instructions: 'متابعة السكر حسب إرشادات الطبيب.' },
+  { med: 'فيتامين د 50000 IU', dosage: 'كبسولة أسبوعياً', timesPerDay: 1, durationDays: 56, instructions: 'جرعة أسبوعية حسب نتيجة التحليل.' },
+];
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -34,6 +46,7 @@ export default function DoctorDashboard({ navigation }: any) {
   const [videoPrice, setVideoPrice] = useState(String(user?.doctorVideoPrice ?? 60));
   const [clinicPrice, setClinicPrice] = useState(String(user?.doctorClinicPrice ?? user?.doctorVideoPrice ?? 60));
   const [commissionRate, setCommissionRate] = useState(5);
+  const hasAdminAccess = (user?.adminPermissions?.length || 0) > 0;
 
   const fetchData = useCallback(async () => {
     if (!user?.uid) return;
@@ -107,6 +120,12 @@ export default function DoctorDashboard({ navigation }: any) {
       </View>
 
       <View style={styles.signOutRow}>
+        {hasAdminAccess && (
+          <TouchableOpacity style={styles.adminToolsBtn} onPress={() => navigation.navigate('Admin')}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={COLORS.primaryLight} />
+            <Text style={styles.adminToolsText}>لوحة الأدمن</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
           <Text style={styles.signOutText}>خروج</Text>
@@ -252,43 +271,206 @@ export default function DoctorDashboard({ navigation }: any) {
 
 function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorName: string }) {
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
+  const [patientResults, setPatientResults] = useState<LabResult[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [customInstructions, setCustomInstructions] = useState('');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetch = async () => {
-      const allUsers = await (await import('../utils/localDataService')).getAllUsers();
-      const allPrescs: any[] = [];
-      for (const u of allUsers) {
-        const data = await getUserPrescriptions(u.uid);
-        for (const p of data) {
-          if (p.doctor === doctorName) {
-            allPrescs.push({ ...p, patientName: u.name });
-          }
+  const fetchPrescriptionsData = async () => {
+    setLoading(true);
+    const allUsers = await (await import('../utils/localDataService')).getAllUsers();
+    const doctorAppointments = await getDoctorAppointments(doctorId);
+    const patientMap = new Map<string, any>();
+
+    for (const apt of doctorAppointments) {
+      if (apt.status === 'ملغي') continue;
+      const user = allUsers.find((u) => u.uid === apt.patientId);
+      patientMap.set(apt.patientId, {
+        uid: apt.patientId,
+        name: apt.patientName || user?.name || 'مريض',
+        email: user?.email,
+        phone: user?.phone,
+        lastAppointment: `${apt.date} • ${apt.time}`,
+        status: apt.status,
+      });
+    }
+
+    const allPrescs: any[] = [];
+    for (const u of allUsers) {
+      const data = await getUserPrescriptions(u.uid);
+      for (const p of data) {
+        if (p.doctor === doctorName) {
+          allPrescs.push({ ...p, patientName: u.name });
         }
       }
-      setPrescriptions(allPrescs);
-      setLoading(false);
-    };
-    fetch();
+    }
+
+    const nextPatients = Array.from(patientMap.values());
+    setPatients(nextPatients);
+    setSelectedPatient((current: any | null) => current || nextPatients[0] || null);
+    setPrescriptions(allPrescs);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchPrescriptionsData();
   }, [doctorId, doctorName]);
 
+  useEffect(() => {
+    const fetchPatientResults = async () => {
+      if (!selectedPatient?.uid) {
+        setPatientResults([]);
+        return;
+      }
+      const results = await getUserResults(selectedPatient.uid);
+      setPatientResults(results);
+    };
+    fetchPatientResults();
+  }, [selectedPatient?.uid]);
+
+  const filteredCatalog = MEDICINE_CATALOG.filter((item) =>
+    `${item.med} ${item.dosage}`.toLowerCase().includes(searchTerm.trim().toLowerCase())
+  );
+
+  const addPrescriptionForPatient = async (medicine: typeof MEDICINE_CATALOG[number]) => {
+    if (!selectedPatient?.uid) {
+      showInfo('تنبيه', 'اختر مريضاً أولاً من قائمة الحجوزات.');
+      return;
+    }
+
+    const totalDoses = medicine.timesPerDay * medicine.durationDays;
+    const saved = await createPrescription({
+      userId: selectedPatient.uid,
+      med: medicine.med,
+      dosage: medicine.dosage,
+      doctor: doctorName,
+      date: new Date().toLocaleDateString('ar-EG'),
+      frequency: `${medicine.timesPerDay} مرة يومياً لمدة ${medicine.durationDays} يوم`,
+      durationDays: medicine.durationDays,
+      timesPerDay: medicine.timesPerDay,
+      instructions: customInstructions.trim() || medicine.instructions,
+      startDate: new Date().toISOString(),
+      totalDoses,
+      takenDoses: 0,
+    });
+
+    if (saved) {
+      showInfo('تم', `تمت إضافة ${medicine.med} إلى وصفات ${selectedPatient.name}.`);
+      setCustomInstructions('');
+      fetchPrescriptionsData();
+    } else {
+      showInfo('خطأ', 'تعذر حفظ الوصفة للمريض.');
+    }
+  };
+
+  const openMedicalFile = (item: LabResult) => {
+    if (!item.fileData) {
+      showInfo('تنبيه', 'لا يوجد ملف مرفق لهذا السجل.');
+      return;
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const win = window.open();
+      win?.document.write(`<iframe src="${item.fileData}" style="width:100%;height:100%;border:0"></iframe>`);
+    } else {
+      showInfo('تنبيه', 'فتح الملفات متاح حالياً على نسخة الويب.');
+    }
+  };
+
   if (loading) return <Text style={styles.loadingText}>جاري التحميل...</Text>;
-  if (prescriptions.length === 0) return <Text style={styles.emptyText}>لا توجد وصفات مكتوبة</Text>;
 
   return (
     <>
-      {prescriptions.map((p) => (
-        <GlassCard key={p.id} style={styles.prescCard}>
-          <View style={styles.prescRow}>
-            <FontAwesome5 name="pills" size={20} color={COLORS.accentWarm} />
-            <View style={styles.prescInfo}>
-              <Text style={styles.prescMed}>{p.med}</Text>
-              <Text style={styles.prescDosage}>{p.dosage}</Text>
-            </View>
-          </View>
-          <Text style={styles.prescFooter}>المريض: {p.patientName || 'غير محدد'} • {p.date}</Text>
+      <Text style={styles.panelTitle}>اختر المريض من حجوزاتك</Text>
+      {patients.length === 0 ? (
+        <Text style={styles.emptyText}>لا يوجد مرضى مرتبطين بحجوزات حالياً</Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.patientChips}>
+          {patients.map((patient) => {
+            const selected = selectedPatient?.uid === patient.uid;
+            return (
+              <TouchableOpacity key={patient.uid} style={[styles.patientChip, selected && styles.patientChipActive]} onPress={() => setSelectedPatient(patient)}>
+                <FontAwesome5 name="user-injured" size={14} color={selected ? COLORS.bgBase : COLORS.primaryLight} />
+                <Text style={[styles.patientChipText, selected && styles.patientChipTextActive]}>{patient.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {selectedPatient && (
+        <GlassCard style={styles.patientFileCard}>
+          <Text style={styles.panelTitle}>ملف المريض: {selectedPatient.name}</Text>
+          <Text style={styles.patientMeta}>آخر حجز: {selectedPatient.lastAppointment} • الحالة: {selectedPatient.status}</Text>
+          <Text style={styles.patientMeta}>الهاتف: {selectedPatient.phone || 'غير مسجل'} • البريد: {selectedPatient.email || 'غير مسجل'}</Text>
+          <Text style={styles.subPanelTitle}>التحاليل والأشعة والملفات المرفوعة</Text>
+          {patientResults.length === 0 ? (
+            <Text style={styles.emptyInline}>لا توجد ملفات طبية مرفوعة لهذا المريض.</Text>
+          ) : (
+            patientResults.map((result) => (
+              <TouchableOpacity key={result.id} style={styles.resultMiniCard} onPress={() => openMedicalFile(result)}>
+                <FontAwesome5 name={result.category === 'xray' ? 'x-ray' : result.category === 'prescription' ? 'file-prescription' : 'vial'} size={16} color={COLORS.primaryLight} />
+                <View style={styles.resultMiniInfo}>
+                  <Text style={styles.resultMiniName}>{result.name}</Text>
+                  <Text style={styles.resultMiniMeta}>{result.lab} • {result.date}</Text>
+                </View>
+                <Ionicons name="open-outline" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            ))
+          )}
         </GlassCard>
-      ))}
+      )}
+
+      <GlassCard style={styles.medicineTableCard}>
+        <Text style={styles.panelTitle}>كتالوج الأدوية والجرعات</Text>
+        <TextInput
+          style={styles.searchInput}
+          value={searchTerm}
+          onChangeText={setSearchTerm}
+          placeholder="ابحث باسم الدواء أو الجرعة"
+          placeholderTextColor={COLORS.textMuted}
+        />
+        <TextInput
+          style={styles.instructionsInput}
+          value={customInstructions}
+          onChangeText={setCustomInstructions}
+          placeholder="تعليمات إضافية اختيارية للمريض"
+          placeholderTextColor={COLORS.textMuted}
+          multiline
+        />
+        {filteredCatalog.map((medicine) => (
+          <View key={medicine.med} style={styles.medicineRow}>
+            <View style={styles.medicineInfo}>
+              <Text style={styles.prescMed}>{medicine.med}</Text>
+              <Text style={styles.prescDosage}>{medicine.dosage} • {medicine.timesPerDay} مرة يومياً • {medicine.durationDays} يوم</Text>
+              <Text style={styles.medicineInstructions}>{medicine.instructions}</Text>
+            </View>
+            <TouchableOpacity style={styles.assignMedBtn} onPress={() => addPrescriptionForPatient(medicine)}>
+              <Ionicons name="add-circle" size={16} color={COLORS.bgBase} />
+              <Text style={styles.assignMedText}>إضافة</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </GlassCard>
+
+      <Text style={styles.panelTitle}>وصفات كتبتها مؤخراً</Text>
+      {prescriptions.length === 0 ? (
+        <Text style={styles.emptyText}>لا توجد وصفات مكتوبة</Text>
+      ) : (
+        prescriptions.map((p) => (
+          <GlassCard key={p.id} style={styles.prescCard}>
+            <View style={styles.prescRow}>
+              <FontAwesome5 name="pills" size={20} color={COLORS.accentWarm} />
+              <View style={styles.prescInfo}>
+                <Text style={styles.prescMed}>{p.med}</Text>
+                <Text style={styles.prescDosage}>{p.dosage} {p.frequency ? `• ${p.frequency}` : ''}</Text>
+              </View>
+            </View>
+            <Text style={styles.prescFooter}>المريض: {p.patientName || 'غير محدد'} • {p.date}</Text>
+          </GlassCard>
+        ))
+      )}
     </>
   );
 }
@@ -314,7 +496,9 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bgBase, direction: 'rtl' },
   header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, marginTop: 40 },
   headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: 'bold' },
-  signOutRow: { paddingHorizontal: 24, paddingVertical: 8, flexDirection: 'row-reverse', justifyContent: 'flex-end' },
+  signOutRow: { paddingHorizontal: 24, paddingVertical: 8, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
+  adminToolsBtn: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '55', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, gap: 6 },
+  adminToolsText: { color: COLORS.primaryLight, fontSize: 13, fontWeight: 'bold' },
   signOutText: { color: COLORS.danger, fontSize: 13, fontWeight: 'bold', marginRight: 4 },
   content: { padding: 24, paddingBottom: 60 },
   mainInfoCard: { padding: 20, marginBottom: 24, backgroundColor: COLORS.primarySofter },
@@ -364,6 +548,28 @@ const styles = StyleSheet.create({
   placeholderSubtext: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center' },
   openScheduleBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
   openScheduleText: { color: '#FFF', fontWeight: 'bold' },
+  panelTitle: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right', marginBottom: 10 },
+  subPanelTitle: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginTop: 14, marginBottom: 8 },
+  patientChips: { flexDirection: 'row-reverse', gap: 8, paddingBottom: 12 },
+  patientChip: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 },
+  patientChipActive: { backgroundColor: COLORS.accentWarm, borderColor: COLORS.accentWarm },
+  patientChipText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: 'bold' },
+  patientChipTextActive: { color: COLORS.bgBase },
+  patientFileCard: { padding: 16, marginBottom: 16 },
+  patientMeta: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 3 },
+  emptyInline: { color: COLORS.textMuted, fontSize: 12, textAlign: 'right', marginTop: 8 },
+  resultMiniCard: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 10, marginTop: 8, gap: 10 },
+  resultMiniInfo: { flex: 1 },
+  resultMiniName: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'right' },
+  resultMiniMeta: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', marginTop: 3 },
+  medicineTableCard: { padding: 16, marginBottom: 18 },
+  searchInput: { color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 10, textAlign: 'right' },
+  instructionsInput: { minHeight: 58, color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 12, textAlign: 'right', textAlignVertical: 'top' },
+  medicineRow: { flexDirection: 'row-reverse', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingVertical: 12, gap: 10 },
+  medicineInfo: { flex: 1 },
+  medicineInstructions: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4, textAlign: 'right' },
+  assignMedBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: COLORS.accentWarm, borderRadius: 10, paddingVertical: 9, paddingHorizontal: 12 },
+  assignMedText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
   prescCard: { padding: 16, marginBottom: 12 },
   prescRow: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 12 },
   prescInfo: { flex: 1, marginLeft: 12 },

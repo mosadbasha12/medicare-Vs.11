@@ -33,9 +33,9 @@ export const DEFAULT_ADMIN_PERMISSIONS: AdminPermission[] = ['approveDoctors'];
 export const isOwnerEmail = (email: string): boolean =>
   hashPassword(email.trim().toLowerCase()) === OWNER_EMAIL_HASH;
 
-export const getPermissionLabel = (role?: string): string => {
+export const getPermissionLabel = (role?: string, adminPermissions?: AdminPermission[]): string => {
   if (role === 'owner') return 'أونر';
-  if (role === 'admin') return 'أدمن';
+  if (role === 'admin' || (adminPermissions?.length || 0) > 0) return 'أدمن';
   return 'مستخدم عادي';
 };
 

@@ -6,11 +6,12 @@ import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserTransactions } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
+import type { Transaction } from '../types';
 
 export default function TransactionsScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { user } = useUser();
   const { t } = useLanguage();
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -38,19 +39,25 @@ export default function TransactionsScreen({ navigation }: { navigation: { goBac
         ListEmptyComponent={
           <Text style={styles.emptyText}>{t('noTransactions')}</Text>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          const currencySymbol = item.currency === 'USD' ? '$' : 'ج.م';
+          const isIn = item.type === 'in' || item.amount > 0;
+          const amount = Math.abs(item.amount).toFixed(2);
+          return (
           <GlassCard style={styles.card}>
             <View style={styles.left}>
-               <Text style={[styles.amount, { color: item.type === 'in' ? COLORS.secondary : COLORS.danger }]}>
-                 {item.amount > 0 ? `+${item.amount}$` : `${item.amount}$`}
+               <Text style={[styles.amount, { color: isIn ? COLORS.secondary : COLORS.danger }]}>
+                 {isIn ? '+' : '-'}{amount} {currencySymbol}
                </Text>
             </View>
             <View style={styles.right}>
                <Text style={styles.title}>{item.title}</Text>
                <Text style={styles.date}>{item.date}</Text>
+               {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
             </View>
           </GlassCard>
-        )}
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -66,6 +73,7 @@ const styles = StyleSheet.create({
   right: { flex: 1 },
   title: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
   date: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 4 },
+  desc: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', marginTop: 6, lineHeight: 16 },
   amount: { fontSize: 16, fontWeight: 'bold' },
   emptyText: { color: COLORS.textSecondary, textAlign: 'center', marginTop: 40, fontSize: 16 },
 });

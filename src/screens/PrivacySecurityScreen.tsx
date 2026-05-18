@@ -17,7 +17,7 @@ export default function PrivacySecurityScreen({ navigation }: any) {
     return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString();
   };
 
-  const roleLabel = `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role)}`;
+  const roleLabel = `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role, user?.adminPermissions)}`;
 
   return (
     <SafeAreaView style={styles.safeArea}>

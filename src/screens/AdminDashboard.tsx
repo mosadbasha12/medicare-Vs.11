@@ -39,7 +39,7 @@ export default function AdminDashboard({ navigation }: any) {
   const [instapayHandle, setInstapayHandle] = useState('medicare@instapay');
   const [loading, setLoading] = useState(true);
   const isOwner = user?.role === 'owner';
-  const adminPermissions = user?.adminPermissions || ['approveDoctors'];
+  const adminPermissions = user?.adminPermissions || (user?.role === 'admin' ? ['approveDoctors'] : []);
   const canApproveDoctors = isOwner || adminPermissions.includes('approveDoctors');
   const canManageUsers = isOwner || adminPermissions.includes('manageUsers');
   const canManageDoctors = isOwner || adminPermissions.includes('manageDoctors');
@@ -55,6 +55,8 @@ export default function AdminDashboard({ navigation }: any) {
     { key: 'manageUsers', label: 'إدارة الحسابات' },
     { key: 'manageDoctors', label: 'عرض الأطباء المعتمدين' },
   ];
+  const hasAdminPermission = (target: any) =>
+    target.role === 'admin' || (target.adminPermissions?.length || 0) > 0;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -213,7 +215,7 @@ export default function AdminDashboard({ navigation }: any) {
           <Ionicons name="shield-checkmark" size={24} color={COLORS.danger} />
           <Text style={styles.adminName}>{user?.name}</Text>
           <Text style={styles.adminEmail}>{user?.email}</Text>
-          <Text style={styles.adminEmail}>الصلاحية: {getPermissionLabel(user?.role)}</Text>
+          <Text style={styles.adminEmail}>الصلاحية: {getPermissionLabel(user?.role, user?.adminPermissions)}</Text>
         </View>
 
         <View style={styles.tabRow}>
@@ -363,18 +365,18 @@ export default function AdminDashboard({ navigation }: any) {
                     </View>
                   </View>
                   <View style={styles.permissionLine}>
-                    <Text style={styles.userMeta}>الصلاحية: {getPermissionLabel(u.role)}</Text>
-                    {isOwner && u.role !== 'doctor' && (
+                    <Text style={styles.userMeta}>الصلاحية: {getPermissionLabel(u.role, u.adminPermissions)}</Text>
+                    {isOwner && (
                       <TouchableOpacity
-                        style={[styles.adminPermissionBtn, u.role === 'admin' && styles.adminPermissionBtnDanger]}
-                        onPress={() => handleSetAdmin(u, u.role !== 'admin')}
+                        style={[styles.adminPermissionBtn, hasAdminPermission(u) && styles.adminPermissionBtnDanger]}
+                        onPress={() => handleSetAdmin(u, !hasAdminPermission(u))}
                       >
-                        <Ionicons name={u.role === 'admin' ? 'remove-circle-outline' : 'shield-checkmark-outline'} size={16} color="#FFF" />
-                        <Text style={styles.adminPermissionText}>{u.role === 'admin' ? 'إلغاء أدمن' : 'جعله أدمن'}</Text>
+                        <Ionicons name={hasAdminPermission(u) ? 'remove-circle-outline' : 'shield-checkmark-outline'} size={16} color="#FFF" />
+                        <Text style={styles.adminPermissionText}>{hasAdminPermission(u) ? 'إلغاء أدمن' : 'جعله أدمن'}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
-                  {isOwner && u.role === 'admin' && (
+                  {isOwner && hasAdminPermission(u) && (
                     <View style={styles.permissionsBox}>
                       <Text style={styles.permissionsTitle}>صلاحيات هذا الأدمن</Text>
                       {permissionOptions.map((option) => {

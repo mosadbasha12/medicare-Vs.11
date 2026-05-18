@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AdminPermission, Appointment, LabResult, Prescription, Doctor, ChatMessage } from '../types';
+import type { AdminPermission, Appointment, LabResult, Prescription, Doctor, ChatMessage, Transaction } from '../types';
 import { COLORS } from '../theme';
 import {
   addDoc,
@@ -66,6 +66,11 @@ export interface PaidAppointmentInput extends Omit<Appointment, 'id'> {
   currency: Currency;
 }
 
+export type TransactionInput = Omit<Transaction, 'id' | 'date' | 'createdAt'> & {
+  date?: string;
+  createdAt?: string;
+};
+
 export type PaidAppointmentResult =
   | { status: 'success'; updatedUser: AppUser; platformFee: number; doctorNet: number }
   | { status: 'insufficient_balance'; required: number; balance: number }
@@ -77,6 +82,48 @@ const PLATFORM_BALANCE_KEY = '@platform_balance';
 const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   commissionRate: 5,
   instapayHandle: 'medicare@instapay',
+};
+
+const formatTransactionDate = (isoDate: string): string => {
+  try {
+    return new Intl.DateTimeFormat('ar-EG', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(isoDate));
+  } catch {
+    return new Date(isoDate).toLocaleString();
+  }
+};
+
+export const recordWalletTransaction = async (input: TransactionInput): Promise<Transaction | null> => {
+  try {
+    const createdAt = input.createdAt || new Date().toISOString();
+    const transaction: Transaction = {
+      ...input,
+      id: `txn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      date: input.date || formatTransactionDate(createdAt),
+      createdAt,
+      status: input.status || 'settled',
+    };
+
+    if (FIREBASE_ENABLED) {
+      const { id, ...payload } = transaction;
+      const docRef = await addDoc(collection(db, 'transactions'), payload);
+      transaction.id = docRef.id;
+    }
+
+    const stored = await AsyncStorage.getItem(`@transactions_${input.userId}`);
+    const transactions: Transaction[] = stored ? JSON.parse(stored) : [];
+    transactions.unshift(transaction);
+    await AsyncStorage.setItem(`@transactions_${input.userId}`, JSON.stringify(transactions));
+    return transaction;
+  } catch (error) {
+    console.error('recordWalletTransaction error:', error);
+    return null;
+  }
 };
 
 const DEFAULT_DOCTORS: Doctor[] = [
@@ -279,6 +326,26 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
       const updatedUser = { ...patient, balance: Number(((patient.balance ?? 0) - apt.price).toFixed(2)), consultationsCount: (patient.consultationsCount ?? 0) + 1 };
       await updateCachedUser(apt.userId, { balance: updatedUser.balance, consultationsCount: updatedUser.consultationsCount });
       await addPlatformBalance(platformFee);
+      await recordWalletTransaction({
+        userId: apt.userId,
+        title: `دفع حجز ${apt.doctorName}`,
+        amount: -apt.price,
+        type: 'out',
+        currency: apt.currency,
+        provider: 'wallet',
+        description: `رسوم التطبيق ${platformFee} ${apt.currency} وصافي الطبيب ${doctorNet} ${apt.currency}`,
+      });
+      if (doctor) {
+        await recordWalletTransaction({
+          userId: apt.doctorId,
+          title: `إيراد حجز من ${patient.name || 'مريض'}`,
+          amount: doctorNet,
+          type: 'in',
+          currency: apt.currency,
+          provider: 'wallet',
+          description: `تم خصم عمولة التطبيق ${platformFee} ${apt.currency}`,
+        });
+      }
       return { status: 'success', updatedUser, platformFee, doctorNet };
     }
 
@@ -309,6 +376,28 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
     await AsyncStorage.setItem(`@appointments_${apt.userId}`, JSON.stringify(existing));
     await saveUsersWithSession(users, users[patientIdx]);
     await addPlatformBalance(platformFee);
+    await recordWalletTransaction({
+      userId: apt.userId,
+      title: `دفع حجز ${apt.doctorName}`,
+      amount: -apt.price,
+      type: 'out',
+      currency: apt.currency,
+      provider: 'wallet',
+      appointmentId: newApt.id,
+      description: `رسوم التطبيق ${platformFee} ${apt.currency} وصافي الطبيب ${doctorNet} ${apt.currency}`,
+    });
+    if (doctorIdx > -1) {
+      await recordWalletTransaction({
+        userId: apt.doctorId,
+        title: `إيراد حجز من ${users[patientIdx].name || 'مريض'}`,
+        amount: doctorNet,
+        type: 'in',
+        currency: apt.currency,
+        provider: 'wallet',
+        appointmentId: newApt.id,
+        description: `تم خصم عمولة التطبيق ${platformFee} ${apt.currency}`,
+      });
+    }
     const { password, ...updatedUser } = users[patientIdx];
     return { status: 'success', updatedUser, platformFee, doctorNet };
   } catch (error) {
@@ -561,6 +650,26 @@ export const createPrescription = async (prescription: Omit<Prescription, 'id'>)
   }
 };
 
+export const markPrescriptionDoseTaken = async (userId: string, prescriptionId: string): Promise<Prescription | null> => {
+  try {
+    const prescriptions = await getUserPrescriptions(userId);
+    const idx = prescriptions.findIndex((item) => item.id === prescriptionId);
+    if (idx === -1) return null;
+
+    const totalDoses = prescriptions[idx].totalDoses ?? 0;
+    const takenDoses = prescriptions[idx].takenDoses ?? 0;
+    prescriptions[idx] = {
+      ...prescriptions[idx],
+      takenDoses: totalDoses > 0 ? Math.min(totalDoses, takenDoses + 1) : takenDoses + 1,
+      lastTakenAt: new Date().toISOString(),
+    };
+    await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(prescriptions));
+    return prescriptions[idx];
+  } catch {
+    return null;
+  }
+};
+
 export const getDoctorPrescriptions = async (doctorId: string, doctorName: string): Promise<ExtendedPrescription[]> => {
   const users = await getAllUsers();
   const allPrescriptions: (Prescription & { patientName: string })[] = [];
@@ -621,16 +730,22 @@ export const updatePrescriptionOrderStatus = async (userId: string, prescription
   }
 };
 
-export const getUserTransactions = async (userId: string): Promise<any[]> => {
+export const getUserTransactions = async (userId: string): Promise<Transaction[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'transactions'), where('userId', '==', userId)));
+      const firebaseTransactions = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Transaction));
+      if (firebaseTransactions.length > 0) {
+        return firebaseTransactions.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
+      }
+    } catch (error) {
+      console.error('Firebase getUserTransactions error:', error);
+    }
+  }
+
   const stored = await AsyncStorage.getItem(`@transactions_${userId}`);
-  if (stored) return JSON.parse(stored);
-  const defaults = [
-    { id: '1', userId, title: 'دفع استشارة د. سارة', date: '20 أبريل 2026', amount: 50, type: 'out' },
-    { id: '2', userId, title: 'شحن رصيد المحفظة', date: '18 أبريل 2026', amount: 200, type: 'in' },
-    { id: '3', userId, title: 'اختبار معامل الـ بي سي أر', date: '15 أبريل 2026', amount: 30, type: 'out' },
-  ];
-  await AsyncStorage.setItem(`@transactions_${userId}`, JSON.stringify(defaults));
-  return defaults;
+  const transactions: Transaction[] = stored ? JSON.parse(stored) : [];
+  return transactions.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
 };
 
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
@@ -726,9 +841,9 @@ export const setUserAdminPermission = async (
     if (FIREBASE_ENABLED) {
       const users = await getAllUsers();
       const target = users.find((u) => u.uid === uid);
-      if (!target || target.role === 'owner' || target.role === 'doctor') return false;
+      if (!target || target.role === 'owner') return false;
       await updateDoc(doc(db, 'users', uid), {
-        role: makeAdmin ? 'admin' : 'user',
+        role: target.role === 'doctor' ? 'doctor' : makeAdmin ? 'admin' : 'user',
         adminPermissions: makeAdmin ? ['approveDoctors'] : [],
         isApproved: true,
         isActive: true,
@@ -741,9 +856,9 @@ export const setUserAdminPermission = async (
     const users = JSON.parse(stored);
     const idx = users.findIndex((u: any) => u.uid === uid);
     if (idx === -1) return false;
-    if (users[idx].role === 'owner' || users[idx].role === 'doctor') return false;
+    if (users[idx].role === 'owner') return false;
 
-    users[idx].role = makeAdmin ? 'admin' : 'user';
+    users[idx].role = users[idx].role === 'doctor' ? 'doctor' : makeAdmin ? 'admin' : 'user';
     users[idx].adminPermissions = makeAdmin ? ['approveDoctors'] : [];
     users[idx].isApproved = true;
     users[idx].isActive = true;
@@ -765,7 +880,7 @@ export const setAdminPermissions = async (
     if (FIREBASE_ENABLED) {
       const users = await getAllUsers();
       const target = users.find((u) => u.uid === uid);
-      if (!target || target.role !== 'admin') return false;
+      if (!target || (target.role !== 'admin' && target.role !== 'doctor')) return false;
       await updateDoc(doc(db, 'users', uid), { adminPermissions: permissions });
       return true;
     }
@@ -774,7 +889,7 @@ export const setAdminPermissions = async (
     if (!stored) return false;
     const users = JSON.parse(stored);
     const idx = users.findIndex((u: any) => u.uid === uid);
-    if (idx === -1 || users[idx].role !== 'admin') return false;
+    if (idx === -1 || (users[idx].role !== 'admin' && users[idx].role !== 'doctor')) return false;
 
     users[idx].adminPermissions = permissions;
     await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));

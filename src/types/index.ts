@@ -92,6 +92,12 @@ export interface Transaction {
   date: string;
   amount: number;
   type: 'in' | 'out';
+  currency?: Currency;
+  status?: 'pending' | 'approved' | 'rejected' | 'settled';
+  provider?: 'card' | 'instapay' | 'wallet' | 'system';
+  appointmentId?: string;
+  description?: string;
+  createdAt?: string;
 }
 
 export interface AppNotification {
@@ -125,6 +131,14 @@ export interface Prescription {
   dosage: string;
   doctor: string;
   date: string;
+  frequency?: string;
+  durationDays?: number;
+  timesPerDay?: number;
+  instructions?: string;
+  startDate?: string;
+  totalDoses?: number;
+  takenDoses?: number;
+  lastTakenAt?: string;
 }
 
 export type RootStackParamList = {
