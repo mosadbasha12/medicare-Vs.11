@@ -5,7 +5,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { createPasswordResetRequest, findUserInDB, isValidEmailFormat, signInWithGoogleInDB } from '../utils/storage';
+import { createPasswordResetRequest, findUserInDB, isValidEmailFormat, signInWithGoogleInDB, signInWithGooglePopupInDB } from '../utils/storage';
 import { useUser } from '../context/UserContext';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -89,11 +89,47 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
   }, [googleResponse]);
 
   const handleGoogleLogin = async () => {
-    const missingWebClient = Platform.OS === 'web' && !process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    if (Platform.OS === 'web') {
+      setGoogleLoading(true);
+      try {
+        const foundUser = await signInWithGooglePopupInDB();
+
+        if (foundUser) {
+          if ((foundUser as any).status === 'inactive') {
+            showAlert('حساب معطل', 'حسابك معطل حالياً.\nتواصل مع إدارة النظام لإعادة التفعيل.');
+            return;
+          }
+          if ((foundUser as any).status === 'pending') {
+            showAlert('قيد المراجعة', 'حسابك قيد المراجعة من الإدارة.\nسيتم إعلامك بعد الموافقة.');
+            return;
+          }
+
+          const u = foundUser as any;
+          setUser(u);
+          let targetScreen = 'MainTabs';
+          if (u.role === 'doctor') targetScreen = 'DoctorDashboard';
+          else if (u.role === 'admin') targetScreen = 'Admin';
+          navigation.reset({
+            index: 0,
+            routes: [{ name: targetScreen as any }],
+          });
+          showAlert('نجاح', `تم تسجيل الدخول بجوجل\nمرحباً ${u.name}`);
+        } else {
+          showAlert('خطأ', 'تعذر تسجيل الدخول بجوجل. تأكد من تفعيل Google في Firebase وإضافة دومين Netlify.');
+        }
+      } catch (error) {
+        console.error('Google popup error:', error);
+        showAlert('خطأ', 'حدثت مشكلة أثناء تسجيل الدخول بجوجل.');
+      } finally {
+        setGoogleLoading(false);
+      }
+      return;
+    }
+
     const missingAndroidClient = Platform.OS === 'android' && !process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
     const missingIosClient = Platform.OS === 'ios' && !process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 
-    if (missingWebClient || missingAndroidClient || missingIosClient) {
+    if (missingAndroidClient || missingIosClient) {
       showAlert('إعداد ناقص', 'لازم تضيف Google Client ID المناسب في ملف .env و Netlify/GitHub Secrets.');
       return;
     }
