@@ -59,7 +59,11 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            
            <View style={styles.levelInfo}>
               <Text style={styles.name}>{user?.name}</Text>
-              <View style={[styles.levelBadge, user?.role === 'admin' && { backgroundColor: COLORS.primary }, user?.role === 'doctor' && { backgroundColor: COLORS.secondary }]}>
+              <View style={[
+                styles.levelBadge,
+                user?.role === 'admin' && { backgroundColor: COLORS.primary },
+                user?.role === 'doctor' && { backgroundColor: COLORS.secondary },
+              ]}>
                 <FontAwesome5 
                   name={user?.role === 'admin' ? "user-shield" : user?.role === 'doctor' ? "stethoscope" : "crown"} 
                   size={10} 
@@ -210,8 +214,8 @@ const styles = StyleSheet.create({
   avatarEmoji: { fontSize: 40 },
   levelInfo: { marginRight: 20, alignItems: 'flex-start' },
   name: { color: COLORS.textPrimary, fontSize: 22, fontWeight: 'bold' },
-  levelBadge: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.accentWarm, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginTop: 8 },
-  levelText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
+  levelBadge: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginTop: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  levelText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
   adminPanelBtn: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.primary, padding: 20, borderRadius: 24, marginBottom: 24 },
   adminPanelTexts: { flex: 1, marginRight: 16 },
   adminTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
