@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppUser, PasswordResetRequest } from '../types';
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   reload,
   sendEmailVerification,
   signInWithEmailAndPassword,
+  signInWithCredential,
   signOut,
 } from 'firebase/auth';
-import { collection, doc, getDocs, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 
 const USERS_KEY = '@medicare_users';
@@ -265,6 +267,82 @@ export const findUserInDB = async (email: string, pass: string): Promise<AppUser
     return null;
   } catch (e) {
     console.error('Login error:', e);
+    return null;
+  }
+};
+
+export const signInWithGoogleInDB = async (
+  idToken?: string,
+  accessToken?: string
+): Promise<AppUser | null | { status: 'inactive' } | { status: 'pending' }> => {
+  if (!FIREBASE_ENABLED || (!idToken && !accessToken)) return null;
+
+  try {
+    const credential = GoogleAuthProvider.credential(idToken, accessToken);
+    const authResult = await signInWithCredential(auth, credential);
+    const firebaseUser = authResult.user;
+    const email = firebaseUser.email?.trim();
+    if (!email) return null;
+
+    const emailLower = email.toLowerCase();
+    const userRef = doc(db, 'users', firebaseUser.uid);
+    const directDoc = await getDoc(userRef);
+
+    let userData: any | null = directDoc.exists() ? directDoc.data() : null;
+    let userDocId = firebaseUser.uid;
+
+    if (!userData) {
+      const existing = await getDocs(query(collection(db, 'users'), where('emailLower', '==', emailLower)));
+      if (!existing.empty) {
+        userDocId = existing.docs[0].id;
+        userData = existing.docs[0].data();
+      }
+    }
+
+    if (!userData) {
+      userData = {
+        uid: firebaseUser.uid,
+        name: firebaseUser.displayName || email.split('@')[0],
+        email,
+        emailLower,
+        level: 'برونزي',
+        role: 'user',
+        balance: 0,
+        isActive: true,
+        isApproved: true,
+        phone: firebaseUser.phoneNumber || '',
+        emailVerified: firebaseUser.emailVerified,
+        phoneVerified: Boolean(firebaseUser.phoneNumber),
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(userRef, removeUndefinedValues(userData));
+    } else {
+      await setDoc(doc(db, 'users', userDocId), removeUndefinedValues({
+        uid: userData.uid || firebaseUser.uid,
+        email,
+        emailLower,
+        name: userData.name || firebaseUser.displayName || email.split('@')[0],
+        emailVerified: true,
+      }), { merge: true });
+      userData = {
+        ...userData,
+        uid: userData.uid || firebaseUser.uid,
+        email,
+        emailLower,
+        name: userData.name || firebaseUser.displayName || email.split('@')[0],
+        emailVerified: true,
+      };
+    }
+
+    if (userData.isActive === false) return { status: 'inactive' };
+    if (userData.role === 'doctor' && userData.isApproved === false) return { status: 'pending' };
+
+    const { password, emailLower: _emailLower, ...userWithoutPass } = userData;
+    await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(userWithoutPass));
+    await saveUserToStorage({ ...userWithoutPass, password: password || '' });
+    return userWithoutPass as AppUser;
+  } catch (e) {
+    console.error('Google login error:', e);
     return null;
   }
 };

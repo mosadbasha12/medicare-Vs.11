@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { createPasswordResetRequest, findUserInDB, isValidEmailFormat } from '../utils/storage';
+import { createPasswordResetRequest, findUserInDB, isValidEmailFormat, signInWithGoogleInDB } from '../utils/storage';
 import { useUser } from '../context/UserContext';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const showAlert = (title: string, message: string) => {
   if (Platform.OS === 'web') {
@@ -19,7 +23,13 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const { user, setUser } = useUser();
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  });
 
   useEffect(() => {
     if (user) {
@@ -32,6 +42,71 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    const finishGoogleLogin = async () => {
+      if (googleResponse?.type !== 'success') return;
+
+      setGoogleLoading(true);
+      try {
+        const authData = googleResponse.authentication as any;
+        const idToken = authData?.idToken || (googleResponse as any).params?.id_token;
+        const accessToken = authData?.accessToken;
+        const foundUser = await signInWithGoogleInDB(idToken, accessToken);
+
+        if (foundUser) {
+          if ((foundUser as any).status === 'inactive') {
+            showAlert('حساب معطل', 'حسابك معطل حالياً.\nتواصل مع إدارة النظام لإعادة التفعيل.');
+            return;
+          }
+          if ((foundUser as any).status === 'pending') {
+            showAlert('قيد المراجعة', 'حسابك قيد المراجعة من الإدارة.\nسيتم إعلامك بعد الموافقة.');
+            return;
+          }
+
+          const u = foundUser as any;
+          setUser(u);
+          let targetScreen = 'MainTabs';
+          if (u.role === 'doctor') targetScreen = 'DoctorDashboard';
+          else if (u.role === 'admin') targetScreen = 'Admin';
+          navigation.reset({
+            index: 0,
+            routes: [{ name: targetScreen as any }],
+          });
+          showAlert('نجاح', `تم تسجيل الدخول بجوجل\nمرحباً ${u.name}`);
+        } else {
+          showAlert('خطأ', 'تعذر تسجيل الدخول بجوجل. تأكد من تفعيل Google في Firebase وإضافة Client ID.');
+        }
+      } catch (error) {
+        console.error('Google login finish error:', error);
+        showAlert('خطأ', 'حدثت مشكلة أثناء تسجيل الدخول بجوجل.');
+      } finally {
+        setGoogleLoading(false);
+      }
+    };
+
+    finishGoogleLogin();
+  }, [googleResponse]);
+
+  const handleGoogleLogin = async () => {
+    const missingWebClient = Platform.OS === 'web' && !process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    const missingAndroidClient = Platform.OS === 'android' && !process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+    const missingIosClient = Platform.OS === 'ios' && !process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+
+    if (missingWebClient || missingAndroidClient || missingIosClient) {
+      showAlert('إعداد ناقص', 'لازم تضيف Google Client ID المناسب في ملف .env و Netlify/GitHub Secrets.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      await promptGoogleAsync();
+    } catch (error) {
+      console.error('Google prompt error:', error);
+      showAlert('خطأ', 'لم نتمكن من فتح تسجيل الدخول بجوجل.');
+      setGoogleLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -170,16 +245,35 @@ export default function LoginScreen({ navigation }: { navigation: any }) {
           <Pressable
             style={({ pressed }) => [
               styles.loginBtn,
-              loading && { opacity: 0.7 },
+              (loading || googleLoading) && { opacity: 0.7 },
               pressed && { transform: [{ scale: 0.98 }], opacity: 0.9 }
             ]}
             onPress={handleLogin}
-            disabled={loading}
+            disabled={loading || googleLoading}
           >
             {loading ? (
               <ActivityIndicator color="#FFF" />
             ) : (
               <Text style={styles.loginBtnText}>تسجيل الدخول</Text>
+            )}
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.googleBtn,
+              (!googleRequest || loading || googleLoading) && { opacity: 0.65 },
+              pressed && { transform: [{ scale: 0.98 }], opacity: 0.9 }
+            ]}
+            onPress={handleGoogleLogin}
+            disabled={!googleRequest || loading || googleLoading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color={COLORS.textPrimary} />
+            ) : (
+              <>
+                <FontAwesome5 name="google" size={18} color={COLORS.textPrimary} style={styles.googleIcon} />
+                <Text style={styles.googleBtnText}>تسجيل الدخول باستخدام جوجل</Text>
+              </>
             )}
           </Pressable>
         </GlassCard>
@@ -214,6 +308,9 @@ const styles = StyleSheet.create({
   forgotText: { color: COLORS.primaryLight, fontSize: 14, fontWeight: '600' },
   loginBtn: { backgroundColor: COLORS.primary, borderRadius: 16, paddingVertical: 16, alignItems: 'center', minHeight: 56, justifyContent: 'center', marginTop: 8 },
   loginBtnText: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold' },
+  googleBtn: { flexDirection: 'row-reverse', gap: 10, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 16, paddingVertical: 16, alignItems: 'center', minHeight: 56, justifyContent: 'center', marginTop: 12, borderWidth: 1, borderColor: COLORS.borderColor },
+  googleIcon: { marginLeft: 2 },
+  googleBtnText: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold' },
   signupRow: { flexDirection: 'row-reverse', justifyContent: 'center', marginTop: 32, padding: 8 },
   noAccountText: { color: COLORS.textSecondary, fontSize: 16 },
   signupText: { color: COLORS.primaryLight, fontSize: 16, fontWeight: 'bold' }
