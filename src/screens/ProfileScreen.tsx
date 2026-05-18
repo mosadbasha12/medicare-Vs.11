@@ -23,6 +23,15 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const consultationsCount = user?.consultationsCount ?? 0;
   const bloodType = user?.bloodType || '--';
   const weight = user?.weight ?? 0;
+  const age = user?.age ?? 0;
+  const gender = user?.gender || 'male';
+
+  const avatarEmoji =
+    user?.role === 'admin'
+      ? gender === 'female' ? '👩‍💼' : '👨‍💼'
+      : user?.role === 'doctor'
+        ? gender === 'female' ? '👩‍⚕️' : '👨‍⚕️'
+        : gender === 'female' ? '👩' : '👨';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -34,9 +43,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
         <View style={styles.avatarSection}>
            <View style={styles.avatarContainer}>
               <View style={styles.avatarCircle}>
-                <Text style={styles.avatarEmoji}>
-                  {user?.role === 'admin' ? '👨‍💼' : user?.role === 'doctor' ? '👨‍⚕️' : '👨'}
-                </Text>
+                <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
               </View>
               <View style={[styles.progressRing, { borderRightColor: COLORS.accentWarm, borderTopColor: COLORS.accentWarm, borderBottomColor: COLORS.accentWarm }]} />
            </View>
@@ -110,6 +117,11 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
            <View style={styles.statBox}>
              <Text style={styles.statVal}>{user?.role === 'doctor' ? '8' : weight}</Text>
              <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('expert') : t('weightKg')}</Text>
+           </View>
+           <View style={styles.statBoxLine} />
+           <View style={styles.statBox}>
+             <Text style={styles.statVal}>{user?.role === 'doctor' ? '--' : age}</Text>
+             <Text style={styles.statLbl}>{t('age')}</Text>
            </View>
         </View>
 

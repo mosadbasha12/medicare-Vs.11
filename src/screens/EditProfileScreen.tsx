@@ -22,6 +22,8 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
   const [phone, setPhone] = useState(user?.phone || '');
   const [weight, setWeight] = useState(String(user?.weight ?? 0));
   const [bloodType, setBloodType] = useState(user?.bloodType || '');
+  const [age, setAge] = useState(String(user?.age ?? 0));
+  const [gender, setGender] = useState<'male' | 'female'>(user?.gender || 'male');
   const [loading, setLoading] = useState(false);
   const showHealthFields = user?.role !== 'doctor';
 
@@ -33,15 +35,20 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
     }
 
     const parsedWeight = Number(weight.replace(',', '.'));
+    const parsedAge = Number(age.replace(',', '.'));
     if (showHealthFields && (!Number.isFinite(parsedWeight) || parsedWeight < 0)) {
       Alert.alert('تنبيه', 'الرجاء إدخال وزن صحيح');
+      return;
+    }
+    if (showHealthFields && (!Number.isInteger(parsedAge) || parsedAge < 0 || parsedAge > 130)) {
+      Alert.alert('تنبيه', 'الرجاء إدخال عمر صحيح');
       return;
     }
 
     const updates = {
       name: name.trim(),
       phone: phone.trim(),
-      ...(showHealthFields ? { weight: parsedWeight, bloodType } : {}),
+      ...(showHealthFields ? { weight: parsedWeight, bloodType, age: parsedAge, gender } : {}),
     };
 
     setLoading(true);
@@ -98,6 +105,22 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
                   );
                 })}
               </View>
+
+              <Text style={styles.label}>{t('age')}</Text>
+              <TextInput style={styles.input} value={age} onChangeText={setAge} placeholder="0" placeholderTextColor={COLORS.textSecondary} keyboardType="numeric" editable={!loading} />
+
+              <Text style={styles.label}>{t('gender')}</Text>
+              <View style={styles.genderRow}>
+                {(['male', 'female'] as const).map((type) => {
+                  const selected = gender === type;
+                  return (
+                    <TouchableOpacity key={type} style={[styles.genderOption, selected && styles.genderOptionActive]} onPress={() => setGender(type)} disabled={loading}>
+                      <Text style={[styles.genderEmoji, selected && styles.genderTextActive]}>{type === 'male' ? '👨' : '👩'}</Text>
+                      <Text style={[styles.genderText, selected && styles.genderTextActive]}>{type === 'male' ? t('male') : t('female')}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </>
           )}
         </GlassCard>
@@ -123,6 +146,12 @@ const styles = StyleSheet.create({
   bloodOptionActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   bloodOptionText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
   bloodOptionTextActive: { color: '#FFF' },
+  genderRow: { flexDirection: 'row-reverse', gap: 12, marginBottom: 20 },
+  genderOption: { flex: 1, flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 8, paddingVertical: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor },
+  genderOptionActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  genderEmoji: { fontSize: 18 },
+  genderText: { color: COLORS.textSecondary, fontSize: 15, fontWeight: '700' },
+  genderTextActive: { color: '#FFF' },
   saveBtn: { backgroundColor: COLORS.primary, paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
   saveText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' }
 });

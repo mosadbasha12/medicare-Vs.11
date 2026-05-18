@@ -197,6 +197,8 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     phoneVerified: user.phoneVerified,
     weight: user.role === 'user' ? user.weight ?? 0 : user.weight,
     bloodType: user.role === 'user' ? user.bloodType ?? '' : user.bloodType,
+    age: user.role === 'user' ? user.age ?? 0 : user.age,
+    gender: user.role === 'user' ? user.gender ?? 'male' : user.gender,
     consultationsCount: user.role === 'user' ? user.consultationsCount ?? 0 : user.consultationsCount,
     createdAt: new Date().toISOString(),
   };
@@ -340,6 +342,8 @@ export const signInWithGoogleInDB = async (
         phone: firebaseUser.phoneNumber || '',
         weight: 0,
         bloodType: '',
+        age: 0,
+        gender: 'male',
         consultationsCount: 0,
         emailVerified: firebaseUser.emailVerified,
         phoneVerified: Boolean(firebaseUser.phoneNumber),
@@ -356,6 +360,8 @@ export const signInWithGoogleInDB = async (
         ...(userData.role === 'user' || !userData.role ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
+          age: userData.age ?? 0,
+          gender: userData.gender ?? 'male',
           consultationsCount: userData.consultationsCount ?? 0,
         } : {}),
       }), { merge: true });
@@ -369,6 +375,8 @@ export const signInWithGoogleInDB = async (
         ...(userData.role === 'user' || !userData.role ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
+          age: userData.age ?? 0,
+          gender: userData.gender ?? 'male',
           consultationsCount: userData.consultationsCount ?? 0,
         } : {}),
       };
@@ -428,6 +436,8 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         phone: firebaseUser.phoneNumber || '',
         weight: 0,
         bloodType: '',
+        age: 0,
+        gender: 'male',
         consultationsCount: 0,
         emailVerified: true,
         phoneVerified: Boolean(firebaseUser.phoneNumber),
@@ -444,6 +454,8 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         ...(userData.role === 'user' || !userData.role ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
+          age: userData.age ?? 0,
+          gender: userData.gender ?? 'male',
           consultationsCount: userData.consultationsCount ?? 0,
         } : {}),
       }), { merge: true });
@@ -457,6 +469,8 @@ export const signInWithGooglePopupInDB = async (): Promise<AppUser | null | { st
         ...(userData.role === 'user' || !userData.role ? {
           weight: userData.weight ?? 0,
           bloodType: userData.bloodType ?? '',
+          age: userData.age ?? 0,
+          gender: userData.gender ?? 'male',
           consultationsCount: userData.consultationsCount ?? 0,
         } : {}),
       };

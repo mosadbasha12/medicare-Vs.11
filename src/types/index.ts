@@ -3,6 +3,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 export type UserLevel = 'برونزي' | 'فضي' | 'ذهبي';
 export type UserRole = 'user' | 'admin' | 'doctor';
+export type UserGender = 'male' | 'female';
 
 export interface AppUser {
   uid: string;
@@ -23,6 +24,8 @@ export interface AppUser {
   phoneVerified?: boolean;
   weight?: number;
   bloodType?: string;
+  age?: number;
+  gender?: UserGender;
   consultationsCount?: number;
   createdAt: string;
 }
