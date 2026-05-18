@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createPaidAppointment, getPlatformSettings } from '../utils/localDataService';
+import { createPaidAppointment, getAllDoctors, getPlatformSettings } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 import type { Currency } from '../types';
 
@@ -78,9 +78,12 @@ export default function BookingScreen({ navigation, route }: any) {
   const doctorName = route?.params?.doctorName || t('doctor');
   const doctorId = route?.params?.doctorId || '';
   const doctorSpec = route?.params?.doctorSpec || '';
-  const doctorPrice = Number(route?.params?.doctorPrice || 50);
-  const doctorClinicPrice = Number(route?.params?.doctorClinicPrice || doctorPrice);
-  const currency: Currency = user?.currency || route?.params?.currency || 'EGP';
+  const initialDoctorPrice = Number(route?.params?.doctorPrice || 50);
+  const initialDoctorClinicPrice = Number(route?.params?.doctorClinicPrice || initialDoctorPrice);
+  const initialCurrency: Currency = route?.params?.currency || user?.currency || 'EGP';
+  const [doctorPrice, setDoctorPrice] = useState(initialDoctorPrice);
+  const [doctorClinicPrice, setDoctorClinicPrice] = useState(initialDoctorClinicPrice);
+  const [currency, setCurrency] = useState<Currency>(initialCurrency);
   const currencySymbol = currency === 'EGP' ? 'ج.م' : '$';
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -102,6 +105,19 @@ export default function BookingScreen({ navigation, route }: any) {
   React.useEffect(() => {
     getPlatformSettings().then((settings) => setCommissionRate(settings.commissionRate));
   }, []);
+
+  React.useEffect(() => {
+    const refreshDoctorPrice = async () => {
+      if (!doctorId) return;
+      const doctors = await getAllDoctors();
+      const latestDoctor = doctors.find((doctor) => doctor.id === doctorId);
+      if (!latestDoctor) return;
+      setDoctorPrice(Number(latestDoctor.price || initialDoctorPrice));
+      setDoctorClinicPrice(Number(latestDoctor.clinicPrice ?? latestDoctor.price ?? initialDoctorClinicPrice));
+      setCurrency((latestDoctor.currency || initialCurrency) as Currency);
+    };
+    refreshDoctorPrice();
+  }, [doctorId, initialDoctorClinicPrice, initialDoctorPrice, initialCurrency]);
 
   const handleBook = async () => {
     if (!selectedDate) {

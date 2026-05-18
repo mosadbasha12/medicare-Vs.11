@@ -58,6 +58,7 @@ export interface Doctor {
   available: boolean;
   bio?: string;
   price: number;
+  clinicPrice?: number;
   currency?: Currency;
 }
 

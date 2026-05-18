@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createPrescription, getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions, getUserResults, updateUserProfile, getPlatformSettings } from '../utils/localDataService';
+import { addDoctorToCatalog, createPrescription, getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions, getUserResults, updateUserProfile, getPlatformSettings } from '../utils/localDataService';
 import type { LabResult } from '../types';
 
 const MEDICINE_CATALOG = [
@@ -78,7 +78,9 @@ export default function DoctorDashboard({ navigation }: any) {
     }
     const success = await updateUserProfile(user.uid, { doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic });
     if (success) {
-      setUser({ ...user, doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic });
+      const updatedUser = { ...user, doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic };
+      await addDoctorToCatalog(updatedUser);
+      setUser(updatedUser);
       showInfo('تم', 'تم تحديث أسعارك بنجاح.');
     } else {
       showInfo('خطأ', 'فشل تحديث الأسعار.');

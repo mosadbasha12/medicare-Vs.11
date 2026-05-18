@@ -146,6 +146,7 @@ export const getAllDoctors = async (): Promise<Doctor[]> => {
           emoji: '👨‍⚕️',
           available: u.isActive !== false,
           price: u.doctorVideoPrice ?? 60,
+          clinicPrice: u.doctorClinicPrice ?? u.doctorVideoPrice ?? 60,
           currency: u.currency || 'EGP',
         };
       });
@@ -173,7 +174,8 @@ export const getAllDoctors = async (): Promise<Doctor[]> => {
       rating: 5.0,
       emoji: '👨‍⚕️',
       available: true,
-      price: 60,
+      price: u.doctorVideoPrice ?? 60,
+      clinicPrice: u.doctorClinicPrice ?? u.doctorVideoPrice ?? 60,
       currency: u.currency || 'EGP',
     }))
     .filter((rd) => !defaultDoctors.some((d) => d.id === rd.id));
@@ -206,15 +208,29 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
         rating: 5.0,
         emoji: '👨‍⚕️',
         available: doctorUser.isApproved !== false,
-        price: 60,
+        price: doctorUser.doctorVideoPrice ?? 60,
+        clinicPrice: doctorUser.doctorClinicPrice ?? doctorUser.doctorVideoPrice ?? 60,
         currency: doctorUser.currency || 'EGP',
       }, { merge: true });
       return true;
     }
 
     const doctors = await getAllDoctors();
-    const alreadyExists = doctors.find((d) => d.id === doctorUser.uid);
-    if (alreadyExists) return true;
+    const existingIndex = doctors.findIndex((d) => d.id === doctorUser.uid);
+    if (existingIndex > -1) {
+      doctors[existingIndex] = {
+        ...doctors[existingIndex],
+        name: doctorUser.name,
+        specialty: doctorUser.specialty || doctors[existingIndex].specialty || 'عام',
+        available: doctorUser.isApproved !== false,
+        price: doctorUser.doctorVideoPrice ?? doctors[existingIndex].price ?? 60,
+        clinicPrice: doctorUser.doctorClinicPrice ?? doctorUser.doctorVideoPrice ?? doctors[existingIndex].clinicPrice ?? doctors[existingIndex].price ?? 60,
+        currency: doctorUser.currency || doctors[existingIndex].currency || 'EGP',
+      };
+      await AsyncStorage.setItem('@doctors', JSON.stringify(doctors));
+      return true;
+    }
+
     const newDoctor: Doctor = {
       id: doctorUser.uid,
       name: doctorUser.name,
@@ -222,7 +238,8 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
       rating: 5.0,
       emoji: '👨‍⚕️',
       available: doctorUser.isApproved !== false,
-      price: 60,
+      price: doctorUser.doctorVideoPrice ?? 60,
+      clinicPrice: doctorUser.doctorClinicPrice ?? doctorUser.doctorVideoPrice ?? 60,
       currency: doctorUser.currency || 'EGP',
     };
     if (doctorUser.isApproved !== false) {
