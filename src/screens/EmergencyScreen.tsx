@@ -1,18 +1,20 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Linking, Platform } from 'react-native';
-import { Ionicons, FontAwesome5, MaterialIcons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Linking, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Location from 'expo-location';
+import { FontAwesome5, Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 
 type EmergencyNumber = { icon: string; label: string; number: string; color: string };
-type Hospital = { name: string; area: string; phone: string };
+type Coordinates = { latitude: number; longitude: number };
+type Hospital = { id: string; name: string; address: string; phone?: string; latitude?: number; longitude?: number; distanceKm?: number };
 type EmergencyRegion = {
   id: string;
   label: string;
   bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number };
   primary: string;
   numbers: EmergencyNumber[];
-  hospitals: Hospital[];
+  fallbackHospitals: Hospital[];
 };
 
 const EMERGENCY_REGIONS: EmergencyRegion[] = [
@@ -27,10 +29,10 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'fire-extinguisher', label: 'الحماية المدنية', number: '180', color: COLORS.accentWarm },
       { icon: 'car-crash', label: 'المرور', number: '128', color: COLORS.primaryLight },
     ],
-    hospitals: [
-      { name: 'مستشفى القصر العيني', area: 'القاهرة • طوارئ 24 ساعة', phone: '123' },
-      { name: 'مستشفى الدمرداش', area: 'العباسية • طوارئ 24 ساعة', phone: '123' },
-      { name: 'مستشفى أحمد ماهر', area: 'مصر القديمة • طوارئ 24 ساعة', phone: '123' },
+    fallbackHospitals: [
+      { id: 'kasr-alainy', name: 'مستشفى القصر العيني', address: 'القاهرة • طوارئ 24 ساعة', phone: '123' },
+      { id: 'demerdash', name: 'مستشفى الدمرداش', address: 'العباسية • طوارئ 24 ساعة', phone: '123' },
+      { id: 'ahmed-maher', name: 'مستشفى أحمد ماهر', address: 'مصر القديمة • طوارئ 24 ساعة', phone: '123' },
     ],
   },
   {
@@ -44,10 +46,10 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'fire-extinguisher', label: 'الحماية المدنية', number: '180', color: COLORS.accentWarm },
       { icon: 'car-crash', label: 'المرور', number: '128', color: COLORS.primaryLight },
     ],
-    hospitals: [
-      { name: 'المستشفى الأميري الجامعي', area: 'محطة الرمل • طوارئ 24 ساعة', phone: '123' },
-      { name: 'مستشفى سموحة الجامعي', area: 'سموحة • طوارئ 24 ساعة', phone: '123' },
-      { name: 'مستشفى رأس التين العام', area: 'بحري • طوارئ 24 ساعة', phone: '123' },
+    fallbackHospitals: [
+      { id: 'amiri', name: 'المستشفى الأميري الجامعي', address: 'محطة الرمل • طوارئ 24 ساعة', phone: '123' },
+      { id: 'smouha', name: 'مستشفى سموحة الجامعي', address: 'سموحة • طوارئ 24 ساعة', phone: '123' },
+      { id: 'ras-el-tin', name: 'مستشفى رأس التين العام', address: 'بحري • طوارئ 24 ساعة', phone: '123' },
     ],
   },
   {
@@ -61,10 +63,10 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'fire-extinguisher', label: 'الدفاع المدني', number: '998', color: COLORS.accentWarm },
       { icon: 'car-crash', label: 'المرور', number: '993', color: COLORS.primaryLight },
     ],
-    hospitals: [
-      { name: 'مدينة الملك سعود الطبية', area: 'الرياض • طوارئ 24 ساعة', phone: '997' },
-      { name: 'مستشفى الملك فيصل التخصصي', area: 'المعذر • طوارئ 24 ساعة', phone: '997' },
-      { name: 'مستشفى الإيمان العام', area: 'جنوب الرياض • طوارئ 24 ساعة', phone: '997' },
+    fallbackHospitals: [
+      { id: 'king-saud-medical', name: 'مدينة الملك سعود الطبية', address: 'الرياض • طوارئ 24 ساعة', phone: '997' },
+      { id: 'king-faisal-specialist', name: 'مستشفى الملك فيصل التخصصي', address: 'المعذر • طوارئ 24 ساعة', phone: '997' },
+      { id: 'al-iman', name: 'مستشفى الإيمان العام', address: 'جنوب الرياض • طوارئ 24 ساعة', phone: '997' },
     ],
   },
   {
@@ -78,10 +80,10 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'fire-extinguisher', label: 'الدفاع المدني', number: '997', color: COLORS.accentWarm },
       { icon: 'phone', label: 'الحالات غير الطارئة', number: '901', color: COLORS.primaryLight },
     ],
-    hospitals: [
-      { name: 'Rashid Hospital', area: 'Dubai • Emergency 24/7', phone: '998' },
-      { name: 'Dubai Hospital', area: 'Deira • Emergency 24/7', phone: '998' },
-      { name: 'Latifa Hospital', area: 'Oud Metha • Emergency 24/7', phone: '998' },
+    fallbackHospitals: [
+      { id: 'rashid-hospital', name: 'Rashid Hospital', address: 'Dubai • Emergency 24/7', phone: '998' },
+      { id: 'dubai-hospital', name: 'Dubai Hospital', address: 'Deira • Emergency 24/7', phone: '998' },
+      { id: 'latifa-hospital', name: 'Latifa Hospital', address: 'Oud Metha • Emergency 24/7', phone: '998' },
     ],
   },
   {
@@ -94,102 +96,242 @@ const EMERGENCY_REGIONS: EmergencyRegion[] = [
       { icon: 'fire-extinguisher', label: 'الحماية المدنية', number: '180', color: COLORS.accentWarm },
       { icon: 'phone', label: 'الطوارئ العامة', number: '112', color: COLORS.primaryLight },
     ],
-    hospitals: [
-      { name: 'أقرب مستشفى عام', area: 'استخدم الاتصال بالإسعاف لتوجيهك حسب موقعك', phone: '123' },
-      { name: 'أقرب مركز طوارئ', area: 'يتم تحديده حسب المحافظة الحالية', phone: '123' },
+    fallbackHospitals: [
+      { id: 'nearest-general', name: 'أقرب مستشفى عام', address: 'فعّل الموقع لعرض أقرب 3 مستشفيات بدقة', phone: '123' },
+      { id: 'nearest-emergency', name: 'أقرب مركز طوارئ', address: 'اتصل بالإسعاف لتوجيهك حسب موقعك', phone: '123' },
+      { id: 'nearest-health', name: 'أقرب نقطة رعاية عاجلة', address: 'يتم تحديدها عند السماح بالموقع', phone: '123' },
     ],
   },
 ];
 
-const getRegionByCoords = (lat: number, lng: number) =>
-  EMERGENCY_REGIONS.find((region) => region.bounds && lat >= region.bounds.minLat && lat <= region.bounds.maxLat && lng >= region.bounds.minLng && lng <= region.bounds.maxLng) ||
+const toRad = (value: number) => (value * Math.PI) / 180;
+
+const distanceKm = (from: Coordinates, to: Coordinates) => {
+  const earthRadiusKm = 6371;
+  const dLat = toRad(to.latitude - from.latitude);
+  const dLng = toRad(to.longitude - from.longitude);
+  const lat1 = toRad(from.latitude);
+  const lat2 = toRad(to.latitude);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getRegionByCoords = (latitude: number, longitude: number) =>
+  EMERGENCY_REGIONS.find((region) => region.bounds && latitude >= region.bounds.minLat && latitude <= region.bounds.maxLat && longitude >= region.bounds.minLng && longitude <= region.bounds.maxLng) ||
   EMERGENCY_REGIONS.find((region) => region.id === 'default')!;
+
+const formatAddress = (tags: Record<string, string> = {}) => {
+  const parts = [tags['addr:street'], tags['addr:suburb'], tags['addr:city']].filter(Boolean);
+  return parts.length ? parts.join(' • ') : 'مستشفى قريب من موقعك';
+};
+
+const getHospitalCoords = (item: any): Coordinates | null => {
+  const latitude = item.lat ?? item.center?.lat;
+  const longitude = item.lon ?? item.center?.lon;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+  return { latitude, longitude };
+};
+
+const fetchNearbyHospitals = async (coords: Coordinates): Promise<Hospital[]> => {
+  const query = `
+    [out:json][timeout:12];
+    (
+      node["amenity"="hospital"](around:25000,${coords.latitude},${coords.longitude});
+      way["amenity"="hospital"](around:25000,${coords.latitude},${coords.longitude});
+      relation["amenity"="hospital"](around:25000,${coords.latitude},${coords.longitude});
+      node["healthcare"="hospital"](around:25000,${coords.latitude},${coords.longitude});
+      way["healthcare"="hospital"](around:25000,${coords.latitude},${coords.longitude});
+      relation["healthcare"="hospital"](around:25000,${coords.latitude},${coords.longitude});
+    );
+    out center tags 30;
+  `;
+
+  const response = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: `data=${encodeURIComponent(query)}`,
+  });
+  if (!response.ok) throw new Error('Failed to load nearby hospitals');
+
+  const data = await response.json();
+  const seen = new Set<string>();
+  return (data.elements || [])
+    .map((item: any) => {
+      const hospitalCoords = getHospitalCoords(item);
+      const name = item.tags?.name || item.tags?.['name:ar'] || item.tags?.['name:en'];
+      if (!hospitalCoords || !name) return null;
+      const key = `${name}-${hospitalCoords.latitude.toFixed(4)}-${hospitalCoords.longitude.toFixed(4)}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return {
+        id: String(item.id),
+        name,
+        address: formatAddress(item.tags),
+        phone: item.tags?.phone || item.tags?.['contact:phone'],
+        latitude: hospitalCoords.latitude,
+        longitude: hospitalCoords.longitude,
+        distanceKm: distanceKm(coords, hospitalCoords),
+      } as Hospital;
+    })
+    .filter(Boolean)
+    .sort((a: Hospital, b: Hospital) => (a.distanceKm || 0) - (b.distanceKm || 0))
+    .slice(0, 3);
+};
 
 export default function EmergencyScreen({ navigation }: any) {
   const [region, setRegion] = useState<EmergencyRegion>(EMERGENCY_REGIONS.find((item) => item.id === 'default')!);
-  const [locationStatus, setLocationStatus] = useState('جاري تحديد الموقع...');
+  const [coords, setCoords] = useState<Coordinates | null>(null);
+  const [hospitals, setHospitals] = useState<Hospital[]>(region.fallbackHospitals);
+  const [locationStatus, setLocationStatus] = useState('اسمح بالوصول للموقع لعرض أقرب المستشفيات بدقة.');
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [loadingHospitals, setLoadingHospitals] = useState(false);
 
-  const callEmergency = (number: string) => {
+  const callNumber = (number: string) => {
     Linking.openURL(`tel:${number}`);
   };
 
-  const detectLocation = () => {
-    const nav = (globalThis as any).navigator;
-    if (Platform.OS !== 'web' || !nav?.geolocation) {
-      setLocationStatus('تحديد الموقع التلقائي غير متاح على هذا الجهاز، يتم عرض أرقام افتراضية.');
+  const openDirections = (hospital: Hospital) => {
+    if (!hospital.latitude || !hospital.longitude) {
+      callNumber(hospital.phone || region.primary);
       return;
     }
-
-    setLocationStatus('جاري تحديد الموقع...');
-    nav.geolocation.getCurrentPosition(
-      (position: any) => {
-        const nextRegion = getRegionByCoords(position.coords.latitude, position.coords.longitude);
-        setRegion(nextRegion);
-        setLocationStatus(`تم اختيار أرقام الطوارئ حسب موقعك: ${nextRegion.label}`);
-      },
-      () => {
-        setLocationStatus('لم يتم السماح بالوصول للموقع، يتم عرض أرقام افتراضية.');
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 }
-    );
+    const label = encodeURIComponent(hospital.name);
+    const url = Platform.OS === 'ios'
+      ? `http://maps.apple.com/?ll=${hospital.latitude},${hospital.longitude}&q=${label}`
+      : `https://www.google.com/maps/search/?api=1&query=${hospital.latitude},${hospital.longitude}`;
+    Linking.openURL(url);
   };
+
+  const loadNearbyHospitals = useCallback(async (nextCoords: Coordinates, nextRegion: EmergencyRegion) => {
+    setLoadingHospitals(true);
+    try {
+      const nearby = await fetchNearbyHospitals(nextCoords);
+      if (nearby.length > 0) {
+        setHospitals(nearby);
+        setLocationStatus(`تم العثور على أقرب ${nearby.length} مستشفيات حسب موقعك الحالي.`);
+      } else {
+        setHospitals(nextRegion.fallbackHospitals);
+        setLocationStatus('لم نجد مستشفيات كافية قرب موقعك، يتم عرض بدائل طوارئ موثوقة.');
+      }
+    } catch {
+      setHospitals(nextRegion.fallbackHospitals);
+      setLocationStatus('تعذر تحميل المستشفيات من الخريطة الآن، يتم عرض بدائل الطوارئ المتاحة.');
+    } finally {
+      setLoadingHospitals(false);
+    }
+  }, []);
+
+  const detectLocation = useCallback(async () => {
+    setLoadingLocation(true);
+    setLocationStatus('جاري تحديد موقعك...');
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setLocationStatus('لم يتم السماح بالوصول للموقع. فعّل الموقع لعرض أقرب 3 مستشفيات.');
+        setHospitals(region.fallbackHospitals);
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const nextCoords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      const nextRegion = getRegionByCoords(nextCoords.latitude, nextCoords.longitude);
+      setCoords(nextCoords);
+      setRegion(nextRegion);
+      await loadNearbyHospitals(nextCoords, nextRegion);
+    } catch {
+      setLocationStatus('تعذر تحديد الموقع. تأكد من تفعيل خدمات الموقع ثم حاول مرة أخرى.');
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, [loadNearbyHospitals, region.fallbackHospitals]);
 
   useEffect(() => {
     detectLocation();
-  }, []);
+  }, [detectLocation]);
 
-  const otherNumbers = useMemo(() => region.numbers.slice(1), [region]);
+  const primaryNumber = useMemo(() => region.numbers[0], [region]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-forward" size={24} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>مركز الطوارئ</Text>
-        <View style={{ width: 28 }} />
+        <View style={styles.headerTexts}>
+          <Text style={styles.headerTitle}>مركز الطوارئ</Text>
+          <Text style={styles.headerSubtitle}>{region.label}</Text>
+        </View>
+        <View style={styles.statusPill}>
+          <Ionicons name={coords ? 'location' : 'location-outline'} size={14} color={coords ? COLORS.accentWarm : COLORS.textSecondary} />
+          <Text style={[styles.statusPillText, coords && { color: COLORS.accentWarm }]}>{coords ? 'موقع دقيق' : 'بانتظار الموقع'}</Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.sosSection}>
-           <TouchableOpacity style={styles.sosButton} onPress={() => callEmergency(region.primary)}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+        <GlassCard style={styles.heroCard}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroCopy}>
+              <Text style={styles.heroTitle}>مساعدة فورية عند الطوارئ</Text>
+              <Text style={styles.heroText}>اتصل بالطوارئ، شارك موقعك، أو افتح أقرب مستشفى على الخريطة من مكانك الحالي.</Text>
+            </View>
+            <TouchableOpacity style={styles.sosButton} onPress={() => callNumber(region.primary)}>
               <View style={styles.sosInner}>
-                 <MaterialIcons name="touch-app" size={40} color="#FFF" />
-                 <Text style={styles.sosText}>SOS</Text>
+                <MaterialIcons name="touch-app" size={34} color="#FFF" />
+                <Text style={styles.sosText}>SOS</Text>
               </View>
-           </TouchableOpacity>
-           <Text style={styles.sosWarning}>اضغط للاتصال بالطوارئ فوراً</Text>
-           <Text style={styles.locationText}>{locationStatus}</Text>
-           <TouchableOpacity style={styles.detectBtn} onPress={detectLocation}>
-             <Ionicons name="location-outline" size={16} color={COLORS.primaryLight} />
-             <Text style={styles.detectText}>تحديث الموقع</Text>
-           </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.locationPanel}>
+            <View style={styles.locationLine}>
+              {loadingLocation || loadingHospitals ? <ActivityIndicator size="small" color={COLORS.accentWarm} /> : <Ionicons name="navigate-circle-outline" size={22} color={COLORS.accentWarm} />}
+              <Text style={styles.locationText}>{locationStatus}</Text>
+            </View>
+            <TouchableOpacity style={styles.detectBtn} onPress={detectLocation} disabled={loadingLocation || loadingHospitals}>
+              <Ionicons name="locate" size={16} color={COLORS.bgBase} />
+              <Text style={styles.detectText}>تحديث الموقع</Text>
+            </TouchableOpacity>
+          </View>
+        </GlassCard>
+
+        <Text style={styles.sectionTitle}>أرقام الطوارئ السريعة</Text>
+        <View style={styles.numberGrid}>
+          {region.numbers.map((item) => (
+            <EmergencyItem key={`${item.label}-${item.number}`} {...item} primary={item.number === primaryNumber.number} onPress={() => callNumber(item.number)} />
+          ))}
         </View>
 
-        <Text style={styles.sectionTitle}>أرقام الطوارئ السريعة - {region.label}</Text>
-        <GlassCard style={styles.card}>
-          {region.numbers.map((item) => (
-            <EmergencyItem key={`${item.label}-${item.number}`} {...item} onPress={() => callEmergency(item.number)} />
-          ))}
-        </GlassCard>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>أقرب 3 مستشفيات</Text>
+            <Text style={styles.sectionHint}>مرتبة حسب المسافة من موقعك الحالي</Text>
+          </View>
+          {loadingHospitals && <ActivityIndicator size="small" color={COLORS.primaryLight} />}
+        </View>
 
-        <Text style={styles.sectionTitle}>أرقام الطوارئ الأخرى</Text>
-        <GlassCard style={styles.card}>
-          {otherNumbers.map((item) => (
-            <EmergencyItem key={`other-${item.label}-${item.number}`} {...item} onPress={() => callEmergency(item.number)} />
-          ))}
-        </GlassCard>
-
-        <Text style={styles.sectionTitle}>أقرب المستشفيات</Text>
-        {region.hospitals.map((hospital) => (
-          <GlassCard key={hospital.name} style={styles.hospitalCard}>
+        {hospitals.slice(0, 3).map((hospital, index) => (
+          <GlassCard key={hospital.id} style={styles.hospitalCard}>
+            <View style={styles.hospitalRank}>
+              <Text style={styles.hospitalRankText}>{index + 1}</Text>
+            </View>
             <View style={styles.hospitalInfo}>
               <Text style={styles.hospitalName}>{hospital.name}</Text>
-              <Text style={styles.hospitalDist}>{hospital.area}</Text>
+              <Text style={styles.hospitalAddress}>{hospital.address}</Text>
+              <View style={styles.distanceRow}>
+                <Ionicons name="navigate-outline" size={14} color={COLORS.accentWarm} />
+                <Text style={styles.hospitalDistance}>
+                  {hospital.distanceKm != null ? `${hospital.distanceKm.toFixed(1)} كم تقريباً` : 'المسافة تظهر بعد السماح بالموقع'}
+                </Text>
+              </View>
             </View>
-            <TouchableOpacity style={styles.navBtn} onPress={() => callEmergency(hospital.phone)}>
-              <Ionicons name="call" size={20} color={COLORS.danger} />
-            </TouchableOpacity>
+            <View style={styles.hospitalActions}>
+              <TouchableOpacity style={styles.mapBtn} onPress={() => openDirections(hospital)}>
+                <Ionicons name="map-outline" size={18} color={COLORS.bgBase} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.callBtn} onPress={() => callNumber(hospital.phone || region.primary)}>
+                <Ionicons name="call" size={18} color="#FFF" />
+              </TouchableOpacity>
+            </View>
           </GlassCard>
         ))}
       </ScrollView>
@@ -197,45 +339,61 @@ export default function EmergencyScreen({ navigation }: any) {
   );
 }
 
-const EmergencyItem = ({ icon, label, number, color, onPress }: any) => (
-  <TouchableOpacity style={styles.item} onPress={onPress}>
-    <View style={styles.itemRight}>
-       <View style={[styles.iconBox, { backgroundColor: color + '22' }]}>
-         <FontAwesome5 name={icon} size={18} color={color} />
-       </View>
-       <Text style={styles.itemLabel}>{label}</Text>
+const EmergencyItem = ({ icon, label, number, color, primary, onPress }: any) => (
+  <TouchableOpacity style={[styles.numberCard, primary && styles.numberCardPrimary]} onPress={onPress}>
+    <View style={[styles.iconBox, { backgroundColor: color + '22' }]}>
+      <FontAwesome5 name={icon} size={18} color={primary ? '#FFF' : color} />
     </View>
-    <View style={styles.itemLeft}>
-       <Text style={[styles.itemNumber, { color }]}>{number}</Text>
-       <Ionicons name="call" size={18} color={color} />
+    <View style={styles.numberTexts}>
+      <Text style={styles.itemLabel}>{label}</Text>
+      <Text style={[styles.itemNumber, primary ? { color: '#FFF' } : { color }]}>{number}</Text>
     </View>
+    <Ionicons name="call" size={18} color={primary ? '#FFF' : color} />
   </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bgBase, direction: 'rtl' },
   header: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, marginTop: 40 },
+  backBtn: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor },
+  headerTexts: { alignItems: 'center' },
   headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: 'bold' },
-  content: { padding: 24 },
-  sosSection: { alignItems: 'center', marginBottom: 40 },
-  sosButton: { width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(227, 26, 26, 0.2)', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: COLORS.danger },
-  sosInner: { width: 130, height: 130, borderRadius: 65, backgroundColor: COLORS.danger, justifyContent: 'center', alignItems: 'center', elevation: 20, shadowColor: COLORS.danger, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20 },
-  sosText: { color: '#FFF', fontSize: 24, fontWeight: '900', marginTop: 4 },
-  sosWarning: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 20, lineHeight: 20 },
-  locationText: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: 8, lineHeight: 18 },
-  detectBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 12, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: COLORS.borderColor },
-  detectText: { color: COLORS.primaryLight, fontSize: 12, fontWeight: 'bold' },
-  sectionTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right', marginBottom: 16 },
-  card: { padding: 8, marginBottom: 32 },
-  item: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.borderColor },
-  itemRight: { flexDirection: 'row-reverse', alignItems: 'center' },
-  iconBox: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginLeft: 12 },
-  itemLabel: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold' },
-  itemLeft: { flexDirection: 'row-reverse', alignItems: 'center' },
-  itemNumber: { fontSize: 18, fontWeight: '900', marginLeft: 10 },
-  hospitalCard: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', padding: 16, marginBottom: 12 },
+  headerSubtitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4 },
+  statusPill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 999, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor },
+  statusPillText: { color: COLORS.textSecondary, fontSize: 11, fontWeight: 'bold' },
+  content: { padding: 24, paddingBottom: 90 },
+  heroCard: { padding: 18, marginBottom: 24 },
+  heroTop: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 18 },
+  heroCopy: { flex: 1 },
+  heroTitle: { color: COLORS.textPrimary, fontSize: 22, fontWeight: '900', textAlign: 'right', lineHeight: 30 },
+  heroText: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'right', lineHeight: 22, marginTop: 8 },
+  sosButton: { width: 128, height: 128, borderRadius: 64, backgroundColor: 'rgba(227, 26, 26, 0.16)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.danger },
+  sosInner: { width: 104, height: 104, borderRadius: 52, backgroundColor: COLORS.danger, justifyContent: 'center', alignItems: 'center', elevation: 20, shadowColor: COLORS.danger, shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.45, shadowRadius: 20 },
+  sosText: { color: '#FFF', fontSize: 22, fontWeight: '900', marginTop: 2 },
+  locationPanel: { marginTop: 18, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 16, padding: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  locationLine: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  locationText: { flex: 1, color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', lineHeight: 18 },
+  detectBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: COLORS.accentWarm, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
+  detectText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
+  sectionHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 14 },
+  sectionTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', textAlign: 'right', marginBottom: 12 },
+  sectionHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'right' },
+  numberGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 22 },
+  numberCard: { width: '48%', minHeight: 86, flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 16, padding: 14, marginBottom: 12, gap: 10 },
+  numberCardPrimary: { backgroundColor: COLORS.danger, borderColor: COLORS.primaryLight },
+  iconBox: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  numberTexts: { flex: 1, alignItems: 'flex-start' },
+  itemLabel: { color: COLORS.textPrimary, fontSize: 14, fontWeight: 'bold', textAlign: 'right' },
+  itemNumber: { fontSize: 18, fontWeight: '900', marginTop: 4 },
+  hospitalCard: { flexDirection: 'row-reverse', alignItems: 'center', padding: 14, marginBottom: 12, gap: 12 },
+  hospitalRank: { width: 34, height: 34, borderRadius: 10, backgroundColor: COLORS.primarySoft, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
+  hospitalRankText: { color: COLORS.primaryLight, fontWeight: '900', fontSize: 15 },
   hospitalInfo: { flex: 1 },
   hospitalName: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
-  hospitalDist: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 4 },
-  navBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.secondary + '22', justifyContent: 'center', alignItems: 'center' }
+  hospitalAddress: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 4, lineHeight: 18 },
+  distanceRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, marginTop: 6 },
+  hospitalDistance: { color: COLORS.accentWarm, fontSize: 12, fontWeight: 'bold' },
+  hospitalActions: { flexDirection: 'row-reverse', gap: 8 },
+  mapBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: COLORS.accentWarm, justifyContent: 'center', alignItems: 'center' },
+  callBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: COLORS.danger, justifyContent: 'center', alignItems: 'center' },
 });
