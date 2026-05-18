@@ -27,6 +27,7 @@ import AdminDashboard from '../screens/AdminDashboard';
 import DoctorDashboard from '../screens/DoctorDashboard';
 import DoctorScheduleScreen from '../screens/DoctorScheduleScreen';
 import BookingScreen from '../screens/BookingScreen';
+import PrivacySecurityScreen from '../screens/PrivacySecurityScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -101,6 +102,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Language" component={LanguageScreen} />
           <Stack.Screen name="Transactions" component={TransactionsScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
+          <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
           <Stack.Screen name="Results" component={ResultsScreen} />
           <Stack.Screen name="Prescriptions" component={PrescriptionsScreen} />
           <Stack.Screen name="Emergency" component={EmergencyScreen} />

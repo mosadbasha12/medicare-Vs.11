@@ -123,6 +123,7 @@ export type RootStackParamList = {
   Language: undefined;
   Transactions: undefined;
   Notifications: undefined;
+  PrivacySecurity: undefined;
   Results: undefined;
   Prescriptions: undefined;
   Emergency: undefined;

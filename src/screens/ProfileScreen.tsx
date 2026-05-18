@@ -156,7 +156,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
              onPress={() => navigation.navigate('Language')}
            />
            <SettingItem icon="bell" label={t('notifications')} color={COLORS.danger} onPress={() => navigation.navigate('Notifications')} />
-           <SettingItem icon="shield-alt" label={t('privacy')} color={COLORS.textSecondary} />
+           <SettingItem icon="shield-alt" label={t('privacy')} color={COLORS.textSecondary} onPress={() => navigation.navigate('PrivacySecurity')} />
         </GlassCard>
 
         <TouchableOpacity 
