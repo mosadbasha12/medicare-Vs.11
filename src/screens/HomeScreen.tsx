@@ -9,7 +9,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface HomeScreenProps {
   navigation: {
-    navigate: (screen: string, params?: { doctorName: string }) => void;
+    navigate: (screen: string, params?: any) => void;
   };
 }
 
@@ -78,7 +78,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <Text style={styles.sectionTitle}>{t('quickActions')}</Text>
         <View style={styles.quickActionsContainer}>
           <QuickAction icon="user-md" label={t('doctor')} onPress={() => navigation.navigate('الأطباء')} />
-          <QuickAction icon="comments" label={t('chat')} onPress={() => navigation.navigate('Chat', { doctorName: t('doctor') })} />
+          <QuickAction icon="comments" label={t('chat')} onPress={() => navigation.navigate('الأطباء')} />
           <QuickAction icon="vial" label={t('results')} onPress={() => navigation.navigate('Results')} />
           <QuickAction icon="first-aid" label={t('emergency')} onPress={() => navigation.navigate('Emergency')} />
         </View>
