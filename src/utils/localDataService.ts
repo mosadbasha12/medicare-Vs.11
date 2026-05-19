@@ -426,7 +426,11 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
     if (FIREBASE_ENABLED) {
       const users = await getAllUsers();
       const patient = users.find((u) => u.uid === apt.userId);
-      const doctor = users.find((u) => u.uid === apt.doctorId);
+      const doctorUser = users.find((u) => u.uid === apt.doctorId);
+      const demoDoctor = DEFAULT_DOCTORS.find((d) => d.id === apt.doctorId);
+      if (!doctorUser && !demoDoctor) {
+        return { status: 'doctor_not_found' };
+      }
       if (!patient || (patient.balance ?? 0) < apt.price) {
         return { status: 'insufficient_balance', required: apt.price, balance: patient?.balance ?? 0 };
       }
@@ -444,9 +448,9 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
         balance: Number(((patient.balance ?? 0) - apt.price).toFixed(2)),
         consultationsCount: increment(1),
       });
-      if (doctor) {
+      if (doctorUser) {
         await updateDoc(doc(db, 'users', apt.doctorId), {
-          balance: Number(((doctor.balance ?? 0) + doctorNet).toFixed(2)),
+          balance: Number(((doctorUser.balance ?? 0) + doctorNet).toFixed(2)),
         });
       }
       const updatedUser = { ...patient, balance: Number(((patient.balance ?? 0) - apt.price).toFixed(2)), consultationsCount: (patient.consultationsCount ?? 0) + 1 };
@@ -461,7 +465,7 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
         provider: 'wallet',
         description: `رسوم التطبيق ${platformFee} ${apt.currency} وصافي الطبيب ${doctorNet} ${apt.currency}`,
       });
-      if (doctor) {
+      if (doctorUser) {
         await recordWalletTransaction({
           userId: apt.doctorId,
           title: `إيراد حجز من ${patient.name || 'مريض'}`,
@@ -480,6 +484,10 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
     const users = JSON.parse(stored);
     const patientIdx = users.findIndex((u: any) => u.uid === apt.userId);
     const doctorIdx = users.findIndex((u: any) => u.uid === apt.doctorId);
+    const demoDoctor = DEFAULT_DOCTORS.find((d) => d.id === apt.doctorId);
+    if (doctorIdx === -1 && !demoDoctor) {
+      return { status: 'doctor_not_found' };
+    }
     if (patientIdx === -1 || (users[patientIdx].balance ?? 0) < apt.price) {
       return { status: 'insufficient_balance', required: apt.price, balance: users[patientIdx]?.balance ?? 0 };
     }
@@ -1265,5 +1273,23 @@ export const updateUserProfile = async (
     return true;
   } catch {
     return false;
+  }
+};
+
+export const updateUserWalletBalance = async (
+  currentUser: AppUser,
+  balance: number
+): Promise<AppUser | null> => {
+  try {
+    const nextBalance = Number(balance.toFixed(2));
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', currentUser.uid), { balance: nextBalance }, { merge: true });
+    }
+
+    await updateCachedUser(currentUser.uid, { balance: nextBalance });
+    return { ...currentUser, balance: nextBalance };
+  } catch (error) {
+    console.error('updateUserWalletBalance error:', error);
+    return null;
   }
 };

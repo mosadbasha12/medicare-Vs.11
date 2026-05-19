@@ -4,9 +4,8 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { updateUserBalance } from '../utils/storage';
 import { useLanguage } from '../context/LanguageContext';
-import { getPlatformSettings, recordWalletTransaction, updateUserProfile } from '../utils/localDataService';
+import { getPlatformSettings, recordWalletTransaction, updateUserProfile, updateUserWalletBalance } from '../utils/localDataService';
 import type { Currency } from '../types';
 
 const showInfo = (title: string, message: string) => {
@@ -17,8 +16,9 @@ const showInfo = (title: string, message: string) => {
 export default function PaymentScreen({ navigation }: any) {
   const { user, setUser } = useUser();
   const { t } = useLanguage();
-  const [selectedMethod, setSelectedMethod] = useState('visa');
+  const [selectedMethod, setSelectedMethod] = useState<'card' | 'instapay' | 'paypal' | 'apple-pay'>('card');
   const [cards, setCards] = useState(['**** **** **** 4242', '**** **** **** 8899']);
+  const [selectedCard, setSelectedCard] = useState('**** **** **** 4242');
   const [amount, setAmount] = useState('500');
   const currency = user?.currency || 'EGP';
   const currencySymbol = currency === 'EGP' ? 'ج.م' : '$';
@@ -29,18 +29,24 @@ export default function PaymentScreen({ navigation }: any) {
     if (success) {
       setUser({ ...user, currency: nextCurrency });
       showInfo('تم تحديث العملة', `تم اختيار ${nextCurrency === 'EGP' ? 'الجنيه المصري' : 'الدولار'} كعملة الحساب.`);
+    } else {
+      showInfo('تعذر تحديث العملة', 'راجع اتصال Firebase أو صلاحيات المستخدم.');
     }
   };
 
   const handleTopUp = async () => {
     if (!user) return;
+    if (selectedMethod === 'paypal' || selectedMethod === 'apple-pay') {
+      showInfo('غير متاح حالياً', 'طريقة الدفع دي لسه مش مربوطة ببوابة دفع حقيقية. استخدم الكارت التجريبي أو Instapay.');
+      return;
+    }
     const parsedAmount = Number(amount.replace(',', '.'));
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       showInfo('تنبيه', 'اكتب مبلغ شحن صحيح.');
       return;
     }
     const nextBalance = Number((user.balance + parsedAmount).toFixed(2));
-    const updated = await updateUserBalance(user.uid, nextBalance);
+    const updated = await updateUserWalletBalance(user, nextBalance);
     if (updated) {
       await recordWalletTransaction({
         userId: user.uid,
@@ -49,22 +55,27 @@ export default function PaymentScreen({ navigation }: any) {
         type: 'in',
         currency,
         provider: selectedMethod === 'instapay' ? 'instapay' : 'card',
-        description: 'تمت إضافة الرصيد كتجربة داخل التطبيق.',
+        description: selectedMethod === 'instapay'
+          ? 'تم تسجيل شحن Instapay داخل التطبيق. في الإنتاج يجب تأكيد التحويل عبر مراجعة أو Webhook.'
+          : `تمت إضافة الرصيد باستخدام بطاقة ${selectedCard} كتجربة داخل التطبيق.`,
       });
       setUser({ ...updated, currency });
       if (selectedMethod === 'instapay') {
         const settings = await getPlatformSettings();
         showInfo('طلب شحن Instapay', `حوّل ${parsedAmount} ${currencySymbol} إلى:\n${settings.instapayHandle}\nثم احتفظ بصورة التحويل للمراجعة. تمت إضافة الرصيد كتجربة داخل التطبيق.`);
       } else {
-        showInfo('تم شحن الرصيد', `تمت إضافة ${parsedAmount} ${currencySymbol} إلى محفظتك داخل التطبيق.`);
+        showInfo('تم شحن الرصيد', `تمت إضافة ${parsedAmount} ${currencySymbol} إلى محفظتك باستخدام البطاقة ${selectedCard}.`);
       }
+    } else {
+      showInfo('فشل شحن الرصيد', 'لم نقدر نحدث رصيدك على السيرفر. راجع صلاحيات Firebase أو اتصال الإنترنت.');
     }
   };
 
   const handleAddCard = () => {
     const next = `**** **** **** ${Math.floor(1000 + Math.random() * 9000)}`;
     setCards((current) => [...current, next]);
-    setSelectedMethod(next);
+    setSelectedCard(next);
+    setSelectedMethod('card');
     showInfo('تمت الإضافة', `تمت إضافة بطاقة تجريبية: ${next}`);
   };
 
@@ -109,14 +120,14 @@ export default function PaymentScreen({ navigation }: any) {
         <Text style={styles.sectionTitle}>{t('savedCards')}</Text>
         
         {cards.map((card, index) => (
-          <TouchableOpacity key={card} onPress={() => setSelectedMethod(card)}>
+          <TouchableOpacity key={card} onPress={() => { setSelectedCard(card); setSelectedMethod('card'); }}>
             <GlassCard style={styles.cardItem}>
               <FontAwesome5 name={index === 0 ? 'cc-visa' : 'cc-mastercard'} size={32} color="#FFF" />
               <View style={styles.cardInfo}>
                   <Text style={styles.cardType}>{index === 0 ? 'Visa Card' : 'Mastercard'}</Text>
                   <Text style={styles.cardNumber}>{card}</Text>
               </View>
-              {selectedMethod === card && <Ionicons name="checkmark-circle" size={24} color={COLORS.secondary} />}
+              {selectedMethod === 'card' && selectedCard === card && <Ionicons name="checkmark-circle" size={24} color={COLORS.secondary} />}
             </GlassCard>
           </TouchableOpacity>
         ))}
@@ -137,14 +148,14 @@ export default function PaymentScreen({ navigation }: any) {
         <GlassCard style={styles.otherOption}>
            <TouchableOpacity style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1 }} onPress={() => setSelectedMethod('paypal')}>
              <FontAwesome5 name="paypal" size={20} color="#003087" />
-             <Text style={styles.optionLabel}>PayPal</Text>
+             <Text style={styles.optionLabel}>PayPal <Text style={styles.comingSoon}>قريباً</Text></Text>
              <Ionicons name={selectedMethod === 'paypal' ? 'checkmark-circle' : 'chevron-back'} size={18} color={selectedMethod === 'paypal' ? COLORS.secondary : COLORS.textSecondary} />
            </TouchableOpacity>
         </GlassCard>
         <GlassCard style={styles.otherOption}>
            <TouchableOpacity style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1 }} onPress={() => setSelectedMethod('apple-pay')}>
              <FontAwesome5 name="apple-pay" size={24} color="#FFF" />
-             <Text style={styles.optionLabel}>Apple Pay</Text>
+             <Text style={styles.optionLabel}>Apple Pay <Text style={styles.comingSoon}>قريباً</Text></Text>
              <Ionicons name={selectedMethod === 'apple-pay' ? 'checkmark-circle' : 'chevron-back'} size={18} color={selectedMethod === 'apple-pay' ? COLORS.secondary : COLORS.textSecondary} />
            </TouchableOpacity>
         </GlassCard>
@@ -181,6 +192,7 @@ const styles = StyleSheet.create({
   addCardText: { color: COLORS.primaryLight, fontWeight: 'bold', marginRight: 8 },
   otherOption: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, marginBottom: 12 },
   optionLabel: { flex: 1, color: COLORS.textPrimary, fontSize: 16, marginRight: 16, textAlign: 'right' },
+  comingSoon: { color: COLORS.accentWarm, fontSize: 11, fontWeight: 'bold' },
   instapayMark: { width: 28, height: 28, borderRadius: 8, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center' },
   instapayText: { color: '#FFF', fontWeight: '900', fontSize: 11 },
 });
