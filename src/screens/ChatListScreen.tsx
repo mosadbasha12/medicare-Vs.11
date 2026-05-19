@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getAllDoctors, getDoctorChatSummaries, getUserChatSummaries, type ChatSummary } from '../utils/localDataService';
+import { deleteChatThread, getAllDoctors, getDoctorChatSummaries, getUserChatSummaries, type ChatSummary } from '../utils/localDataService';
 import type { Doctor } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -45,6 +45,28 @@ export default function ChatListScreen({ navigation }: any) {
       return;
     }
     navigation.navigate('Chat', { doctorId, doctorName, recipientId: doctorId });
+  };
+
+  const deleteConversation = (chat: ChatSummary) => {
+    if (!user?.uid || !chat.chatId) return;
+    const runDelete = async () => {
+      const success = await deleteChatThread(chat.chatId!, user.uid);
+      if (success) {
+        await fetchData();
+      } else {
+        Alert.alert('خطأ', 'تعذر حذف المحادثة.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('حذف المحادثة\nسيتم حذف المحادثة ورسائلها من الطرفين. هل تريد المتابعة؟')) runDelete();
+      return;
+    }
+
+    Alert.alert('حذف المحادثة', 'سيتم حذف المحادثة ورسائلها من الطرفين. هل تريد المتابعة؟', [
+      { text: 'إلغاء', style: 'cancel' },
+      { text: 'حذف', style: 'destructive', onPress: runDelete },
+    ]);
   };
 
   const newChatDoctors = doctors.filter((doctor) => !chats.some((chat) => chat.doctorId === doctor.id));
@@ -96,6 +118,9 @@ export default function ChatListScreen({ navigation }: any) {
                     <Text style={styles.subText} numberOfLines={1}>{chat.lastMessage}</Text>
                   </View>
                   <View style={styles.metaBox}>
+                    <TouchableOpacity style={styles.deleteChatBtn} onPress={(event: any) => { event?.stopPropagation?.(); deleteConversation(chat); }}>
+                      <Ionicons name="trash-outline" size={15} color={COLORS.danger} />
+                    </TouchableOpacity>
                     {!!chat.unreadCount && chat.unreadCount > 0 ? (
                       <View style={styles.unreadBadge}>
                         <Text style={styles.unreadText}>{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</Text>
@@ -146,6 +171,7 @@ const styles = StyleSheet.create({
   name: { color: COLORS.textPrimary, fontSize: 15, fontWeight: 'bold', textAlign: 'right' },
   subText: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'right' },
   metaBox: { alignItems: 'center', gap: 6 },
+  deleteChatBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.danger + '18', borderWidth: 1, borderColor: COLORS.danger + '40' },
   countText: { color: COLORS.primaryLight, fontSize: 11, fontWeight: 'bold' },
   unreadBadge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: COLORS.danger, alignItems: 'center', justifyContent: 'center' },
   unreadText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },

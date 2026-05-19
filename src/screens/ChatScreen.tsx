@@ -4,7 +4,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { sendMessage, listenToMessages, markChatThreadRead } from '../utils/localDataService';
+import { deleteChatMessage, sendMessage, listenToMessages, markChatThreadRead } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function ChatScreen(props: any) {
@@ -110,6 +110,24 @@ export default function ChatScreen(props: any) {
     Linking.openURL(item.attachmentData);
   };
 
+  const deleteMessage = (item: any) => {
+    if (!user?.uid || item.senderId !== user.uid) return;
+    const runDelete = async () => {
+      const success = await deleteChatMessage(chatId, item.id, user.uid);
+      if (!success) Alert.alert('خطأ', 'تعذر حذف الرسالة.');
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('حذف الرسالة\nهل تريد حذف هذه الرسالة من المحادثة؟')) runDelete();
+      return;
+    }
+
+    Alert.alert('حذف الرسالة', 'هل تريد حذف هذه الرسالة من المحادثة؟', [
+      { text: 'إلغاء', style: 'cancel' },
+      { text: 'حذف', style: 'destructive', onPress: runDelete },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -143,6 +161,11 @@ export default function ChatScreen(props: any) {
         renderItem={({ item }) => (
           <View style={[styles.messageRow, item.senderId === user?.uid ? styles.userRow : styles.doctorRow]}>
             <View style={[styles.bubble, item.senderId === user?.uid ? styles.userBubble : styles.doctorBubble]}>
+              {item.senderId === user?.uid && (
+                <TouchableOpacity style={styles.deleteMessageBtn} onPress={() => deleteMessage(item)}>
+                  <Ionicons name="trash-outline" size={14} color="#FFF" />
+                </TouchableOpacity>
+              )}
               {!!item.text && (
                 <Text style={[styles.messageText, item.senderId === user?.uid ? styles.userText : styles.doctorText]}>
                   {item.text}
@@ -195,9 +218,10 @@ const styles = StyleSheet.create({
   messageRow: { marginBottom: 16, flexDirection: 'row-reverse' },
   userRow: { justifyContent: 'flex-start' },
   doctorRow: { justifyContent: 'flex-end' },
-  bubble: { maxWidth: '80%', padding: 12, borderRadius: 20 },
+  bubble: { maxWidth: '80%', padding: 12, borderRadius: 20, position: 'relative' },
   userBubble: { backgroundColor: COLORS.primary, borderTopRightRadius: 4 },
   doctorBubble: { backgroundColor: COLORS.bgCard, borderTopLeftRadius: 4, borderWidth: 1, borderColor: COLORS.borderColor },
+  deleteMessageBtn: { alignSelf: 'flex-start', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)', marginBottom: 6 },
   messageText: { fontSize: 15, textAlign: 'right' },
   userText: { color: '#FFF' },
   doctorText: { color: COLORS.textPrimary },

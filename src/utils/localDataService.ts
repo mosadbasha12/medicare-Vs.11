@@ -6,6 +6,7 @@ import {
   collectionGroup,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -1218,6 +1219,42 @@ const getSharedChatThreadMessages = async (chatId: string): Promise<ChatMessage[
   }
 };
 
+const getChatParticipantIds = async (chatId: string, fallbackUserId?: string): Promise<string[]> => {
+  const ids = new Set<string>();
+  if (fallbackUserId) ids.add(fallbackUserId);
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDoc(getSharedChatRef(chatId));
+      const data = snap.exists() ? snap.data() : null;
+      if (Array.isArray(data?.participantIds)) {
+        data.participantIds.forEach((id: string) => id && ids.add(id));
+      }
+      if (Array.isArray(data?.messages)) {
+        data.messages.forEach((message: any) => {
+          if (message.senderId) ids.add(message.senderId);
+          if (message.recipientId) ids.add(message.recipientId);
+        });
+      }
+    } catch {
+      // Participant fallback below is enough for local cleanup.
+    }
+  }
+
+  const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
+  const localMessages: ChatMessage[] = stored ? JSON.parse(stored) : [];
+  localMessages.forEach((message) => {
+    if (message.senderId) ids.add(message.senderId);
+    if (message.recipientId) ids.add(message.recipientId);
+  });
+
+  chatId.split('_').forEach((id) => {
+    if (id) ids.add(id);
+  });
+
+  return Array.from(ids);
+};
+
 const saveSharedChatThread = async (
   participantIds: string[],
   chatId: string,
@@ -1586,6 +1623,82 @@ export const sendMessage = async (message: ChatMessageInput): Promise<boolean> =
     } catch {
       return false;
     }
+  }
+};
+
+export const deleteChatMessage = async (
+  chatId: string,
+  messageId: string,
+  requesterId: string
+): Promise<boolean> => {
+  if (!chatId || !messageId || !requesterId) return false;
+
+  try {
+    const participantIds = await getChatParticipantIds(chatId, requesterId);
+    const [sharedMessages, stored] = await Promise.all([
+      getSharedChatThreadMessages(chatId),
+      AsyncStorage.getItem(`@chat_${chatId}`),
+    ]);
+    const localMessages: ChatMessage[] = stored ? JSON.parse(stored) : [];
+    const allMessages = uniqueSortedMessages([...sharedMessages, ...localMessages]);
+    const target = allMessages.find((message) => message.id === messageId);
+
+    if (!target || target.senderId !== requesterId) return false;
+
+    const nextMessages = allMessages.filter((message) => message.id !== messageId);
+    await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(nextMessages));
+
+    if (FIREBASE_ENABLED) {
+      await deleteDoc(doc(db, 'chats', chatId, 'messages', messageId)).catch(() => undefined);
+    }
+
+    if (nextMessages.length > 0) {
+      await saveSharedChatThread(participantIds, chatId, nextMessages);
+      await mirrorChatToUserDocs(participantIds, chatId, nextMessages);
+    } else {
+      await deleteChatThread(chatId, requesterId);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('deleteChatMessage error:', error);
+    return false;
+  }
+};
+
+export const deleteChatThread = async (chatId: string, requesterId: string): Promise<boolean> => {
+  if (!chatId || !requesterId) return false;
+
+  try {
+    const participantIds = await getChatParticipantIds(chatId, requesterId);
+    await AsyncStorage.removeItem(`@chat_${chatId}`);
+
+    if (FIREBASE_ENABLED) {
+      try {
+        const messagesSnap = await getDocs(collection(db, 'chats', chatId, 'messages'));
+        await Promise.all(messagesSnap.docs.map((messageDoc) => deleteDoc(messageDoc.ref).catch(() => undefined)));
+      } catch (error) {
+        console.error('Firebase delete chat messages error:', error);
+      }
+
+      await deleteDoc(doc(db, 'chats', chatId)).catch(() => undefined);
+      await deleteDoc(getSharedChatRef(chatId)).catch(() => undefined);
+
+      await Promise.all(participantIds.map(async (participantId) => {
+        try {
+          await updateDoc(doc(db, 'users', participantId), {
+            [`chatThreads.${chatId}`]: deleteField(),
+          });
+        } catch {
+          await mirrorChatToUserDocs([participantId], chatId, []);
+        }
+      }));
+    }
+
+    return true;
+  } catch (error) {
+    console.error('deleteChatThread error:', error);
+    return false;
   }
 };
 
