@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import type { AppUser, Currency } from '../types';
+import { isOwnerEmail } from './storage';
 
 const FIREBASE_ENABLED = Boolean(
   process.env.EXPO_PUBLIC_FIREBASE_API_KEY &&
@@ -85,6 +86,17 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   commissionRate: 5,
   instapayHandle: 'medicare@instapay',
   themeId: 'ruby',
+};
+
+const normalizePlatformSettings = (settings?: Partial<PlatformSettings> | null): PlatformSettings => ({
+  commissionRate: Math.max(0, Math.min(30, Number(settings?.commissionRate ?? DEFAULT_PLATFORM_SETTINGS.commissionRate) || 0)),
+  instapayHandle: settings?.instapayHandle?.trim() || DEFAULT_PLATFORM_SETTINGS.instapayHandle,
+  themeId: settings?.themeId || DEFAULT_PLATFORM_SETTINGS.themeId,
+});
+
+const findOwnerUser = async (): Promise<any | null> => {
+  const users = await getAllUsers();
+  return users.find((u: any) => u.role === 'owner' || isOwnerEmail(u.email || '')) || null;
 };
 
 const formatTransactionDate = (isoDate: string): string => {
@@ -268,15 +280,22 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
 export const getPlatformSettings = async (): Promise<PlatformSettings> => {
   if (FIREBASE_ENABLED) {
     try {
+      const owner = await findOwnerUser();
+      if (owner?.platformSettings) return normalizePlatformSettings(owner.platformSettings);
+    } catch (error) {
+      console.error('Owner platformSettings fallback error:', error);
+    }
+
+    try {
       const snap = await getDoc(doc(db, 'settings', 'platform'));
-      if (snap.exists()) return { ...DEFAULT_PLATFORM_SETTINGS, ...(snap.data() as Partial<PlatformSettings>) };
+      if (snap.exists()) return normalizePlatformSettings(snap.data() as Partial<PlatformSettings>);
     } catch (error) {
       console.error('Firebase getPlatformSettings error:', error);
     }
   }
 
   const stored = await AsyncStorage.getItem(PLATFORM_SETTINGS_KEY);
-  return stored ? { ...DEFAULT_PLATFORM_SETTINGS, ...JSON.parse(stored) } : DEFAULT_PLATFORM_SETTINGS;
+  return stored ? normalizePlatformSettings(JSON.parse(stored)) : DEFAULT_PLATFORM_SETTINGS;
 };
 
 export const updatePlatformSettings = async (
@@ -284,18 +303,27 @@ export const updatePlatformSettings = async (
   actorRole?: string
 ): Promise<'success' | 'forbidden' | 'failed'> => {
   if (actorRole !== 'owner') return 'forbidden';
-  const cleanSettings: PlatformSettings = {
-    commissionRate: Math.max(0, Math.min(30, Number(settings.commissionRate) || 0)),
-    instapayHandle: settings.instapayHandle.trim() || DEFAULT_PLATFORM_SETTINGS.instapayHandle,
-    themeId: settings.themeId || DEFAULT_PLATFORM_SETTINGS.themeId,
-  };
+  const cleanSettings = normalizePlatformSettings(settings);
 
   try {
+    let savedToFirebase = false;
     if (FIREBASE_ENABLED) {
-      await setDoc(doc(db, 'settings', 'platform'), cleanSettings, { merge: true });
+      try {
+        await setDoc(doc(db, 'settings', 'platform'), cleanSettings, { merge: true });
+        savedToFirebase = true;
+      } catch (error) {
+        console.error('settings/platform write denied, using owner fallback:', error);
+        const owner = await findOwnerUser();
+        if (!owner?.uid) throw error;
+        await updateDoc(doc(db, 'users', owner.uid), {
+          platformSettings: cleanSettings,
+          platformSettingsUpdatedAt: new Date().toISOString(),
+        });
+        savedToFirebase = true;
+      }
     }
     await AsyncStorage.setItem(PLATFORM_SETTINGS_KEY, JSON.stringify(cleanSettings));
-    return 'success';
+    return FIREBASE_ENABLED && !savedToFirebase ? 'failed' : 'success';
   } catch (error) {
     console.error('updatePlatformSettings error:', error);
     return 'failed';
@@ -310,19 +338,24 @@ export const subscribePlatformSettings = (
   if (FIREBASE_ENABLED) {
     const unsubscribe = onSnapshot(
       doc(db, 'settings', 'platform'),
-      (snap) => {
+      async (snap) => {
         if (disposed) return;
-        const settings = snap.exists()
-          ? { ...DEFAULT_PLATFORM_SETTINGS, ...(snap.data() as Partial<PlatformSettings>) }
-          : DEFAULT_PLATFORM_SETTINGS;
-        callback(settings);
+        if (snap.exists()) {
+          callback(await getPlatformSettings());
+        } else {
+          callback(await getPlatformSettings());
+        }
       },
       async () => {
         if (!disposed) callback(await getPlatformSettings());
       }
     );
+    const interval = setInterval(async () => {
+      if (!disposed) callback(await getPlatformSettings());
+    }, 5000);
     return () => {
       disposed = true;
+      clearInterval(interval);
       unsubscribe();
     };
   }
