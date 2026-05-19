@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
 import { FontAwesome5, Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -138,6 +138,7 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://z.overpass-api.de/api/interpreter',
 ];
+const LOCATION_TIMEOUT_MS = Platform.OS === 'web' ? 9000 : 14000;
 
 const buildNearbyHospitalsQuery = (coords: Coordinates, radiusMeters: number) => `
   [out:json][timeout:18];
@@ -221,6 +222,50 @@ const addDistanceToFallbacks = (fallbackHospitals: Hospital[], coords: Coordinat
     .sort((a, b) => (a.distanceKm ?? Number.MAX_SAFE_INTEGER) - (b.distanceKm ?? Number.MAX_SAFE_INTEGER))
     .slice(0, 3);
 
+const withTimeout = async <T,>(task: Promise<T>, timeoutMs: number): Promise<T> =>
+  Promise.race([
+    task,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('Location request timed out')), timeoutMs);
+    }),
+  ]);
+
+const getBrowserCoords = async (): Promise<Coordinates | null> => {
+  if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.geolocation) return null;
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: false, timeout: LOCATION_TIMEOUT_MS, maximumAge: 10 * 60 * 1000 }
+    );
+  });
+};
+
+const getDeviceCoords = async (): Promise<Coordinates | null> => {
+  const accuracyLevels = Platform.OS === 'web'
+    ? [Location.Accuracy.Balanced, Location.Accuracy.Lowest]
+    : [Location.Accuracy.High, Location.Accuracy.Balanced, Location.Accuracy.Low];
+
+  for (const accuracy of accuracyLevels) {
+    try {
+      const position = await withTimeout(Location.getCurrentPositionAsync({ accuracy }), LOCATION_TIMEOUT_MS);
+      return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+    } catch {
+      // Try the next, less strict accuracy level before falling back.
+    }
+  }
+
+  try {
+    const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 });
+    if (lastKnown) return { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude };
+  } catch {
+    // Browser geolocation below gives web one more chance.
+  }
+
+  return getBrowserCoords();
+};
+
 export default function EmergencyScreen({ navigation }: any) {
   const [region, setRegion] = useState<EmergencyRegion>(EMERGENCY_REGIONS.find((item) => item.id === 'default')!);
   const [coords, setCoords] = useState<Coordinates | null>(null);
@@ -228,6 +273,7 @@ export default function EmergencyScreen({ navigation }: any) {
   const [locationStatus, setLocationStatus] = useState('اسمح بالوصول للموقع لعرض أقرب المستشفيات بدقة.');
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [loadingHospitals, setLoadingHospitals] = useState(false);
+  const didAutoDetectRef = useRef(false);
 
   const callNumber = (number: string) => {
     Linking.openURL(`tel:${number}`);
@@ -278,20 +324,27 @@ export default function EmergencyScreen({ navigation }: any) {
         return;
       }
 
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const nextCoords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      const nextCoords = await getDeviceCoords();
+      if (!nextCoords) {
+        setLocationStatus('تعذر قراءة موقعك من المتصفح الآن. يتم عرض بدائل الطوارئ، ويمكنك الضغط على تحديث الموقع بعد تفعيل GPS.');
+        setHospitals(addDistanceToFallbacks(region.fallbackHospitals, null));
+        return;
+      }
       const nextRegion = getRegionByCoords(nextCoords.latitude, nextCoords.longitude);
       setCoords(nextCoords);
       setRegion(nextRegion);
       await loadNearbyHospitals(nextCoords, nextRegion);
     } catch {
-      setLocationStatus('تعذر تحديد الموقع. تأكد من تفعيل خدمات الموقع ثم حاول مرة أخرى.');
+      setLocationStatus('تعذر تحديد الموقع بسرعة. يتم عرض بدائل الطوارئ الآن، وحاول تحديث الموقع مرة أخرى بعد تشغيل خدمات الموقع.');
+      setHospitals(addDistanceToFallbacks(region.fallbackHospitals, null));
     } finally {
       setLoadingLocation(false);
     }
   }, [loadNearbyHospitals, region.fallbackHospitals]);
 
   useEffect(() => {
+    if (didAutoDetectRef.current) return;
+    didAutoDetectRef.current = true;
     detectLocation();
   }, [detectLocation]);
 
