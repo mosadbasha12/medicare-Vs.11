@@ -166,14 +166,14 @@ export default function AdminDashboard({ navigation }: any) {
       showInfo('تنبيه', 'النسبة لازم تكون بين 0 و 30%.');
       return;
     }
-    const result = await updatePlatformSettings({ commissionRate: parsedRate, instapayHandle, themeId: selectedThemeId }, isOwner ? 'owner' : user?.role);
+    const result = await updatePlatformSettings({ commissionRate: parsedRate, instapayHandle, themeId: selectedThemeId }, isOwner ? 'owner' : user?.role, user?.uid);
     showInfo(
       result === 'success' ? 'تم' : 'خطأ',
       result === 'success'
         ? 'تم حفظ إعدادات الدفع والعمولة وستظهر عند كل المستخدمين.'
         : result === 'forbidden'
           ? 'الحفظ متاح للأونر فقط.'
-          : 'فشل حفظ الإعدادات على السيرفر. راجع صلاحيات Firebase settings/platform.'
+          : 'فشل حفظ الإعدادات على السيرفر. راجع صلاحيات Firebase لقواعد users/settings.'
     );
   };
 
@@ -183,14 +183,14 @@ export default function AdminDashboard({ navigation }: any) {
       commissionRate: Number.isFinite(parsedRate) ? parsedRate : 5,
       instapayHandle,
       themeId: selectedThemeId,
-    }, isOwner ? 'owner' : user?.role);
+    }, isOwner ? 'owner' : user?.role, user?.uid);
     showInfo(
       result === 'success' ? 'تم' : 'خطأ',
       result === 'success'
         ? 'تم حفظ الثيم. سيتم تطبيقه تلقائياً عند كل المستخدمين.'
         : result === 'forbidden'
           ? 'حفظ الثيمات متاح للأونر فقط.'
-          : 'فشل حفظ الثيم على السيرفر. راجع صلاحيات Firebase settings/platform.'
+          : 'فشل حفظ الثيم على السيرفر. راجع صلاحيات Firebase لقواعد users/settings.'
     );
   };
 

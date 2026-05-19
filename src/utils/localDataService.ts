@@ -15,7 +15,7 @@ import {
   updateDoc,
   where,
 } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { auth, db } from '../services/firebase';
 import type { AppUser, Currency } from '../types';
 import { isOwnerEmail } from './storage';
 
@@ -300,7 +300,8 @@ export const getPlatformSettings = async (): Promise<PlatformSettings> => {
 
 export const updatePlatformSettings = async (
   settings: PlatformSettings,
-  actorRole?: string
+  actorRole?: string,
+  actorUid?: string
 ): Promise<'success' | 'forbidden' | 'failed'> => {
   if (actorRole !== 'owner') return 'forbidden';
   const cleanSettings = normalizePlatformSettings(settings);
@@ -314,12 +315,27 @@ export const updatePlatformSettings = async (
       } catch (error) {
         console.error('settings/platform write denied, using owner fallback:', error);
         const owner = await findOwnerUser();
-        if (!owner?.uid) throw error;
-        await updateDoc(doc(db, 'users', owner.uid), {
-          platformSettings: cleanSettings,
-          platformSettingsUpdatedAt: new Date().toISOString(),
-        });
-        savedToFirebase = true;
+        const candidateUserIds = [
+          auth.currentUser?.uid,
+          actorUid,
+          owner?.uid,
+        ].filter(Boolean) as string[];
+        let lastError = error;
+
+        for (const uid of Array.from(new Set(candidateUserIds))) {
+          try {
+            await setDoc(doc(db, 'users', uid), {
+              platformSettings: cleanSettings,
+              platformSettingsUpdatedAt: new Date().toISOString(),
+            }, { merge: true });
+            savedToFirebase = true;
+            break;
+          } catch (fallbackError) {
+            lastError = fallbackError;
+          }
+        }
+
+        if (!savedToFirebase) throw lastError;
       }
     }
     await AsyncStorage.setItem(PLATFORM_SETTINGS_KEY, JSON.stringify(cleanSettings));
