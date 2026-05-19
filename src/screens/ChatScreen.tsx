@@ -14,7 +14,7 @@ export default function ChatScreen(props: any) {
   const doctorName = route.params?.doctorName || t('chooseDoctor');
   const doctorId = route.params?.doctorId;
   const hasDoctor = Boolean(doctorId);
-  const chatId = user?.uid && doctorId ? `${user.uid}_${doctorId}` : 'temp';
+  const chatId = route.params?.chatId || (user?.uid && doctorId ? `${user.uid}_${doctorId}` : 'temp');
   
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');

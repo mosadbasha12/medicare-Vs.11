@@ -4,19 +4,9 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { addDoctorToCatalog, createPrescription, getDoctorAppointments, getDoctorStats, updateAppointmentStatus, getUserPrescriptions, getUserResults, updateUserProfile, getPlatformSettings } from '../utils/localDataService';
-import type { LabResult } from '../types';
-
-const MEDICINE_CATALOG = [
-  { med: 'باراسيتامول 500mg', dosage: 'قرص بعد الأكل', timesPerDay: 3, durationDays: 3, instructions: 'للحرارة أو الألم. لا تتجاوز الجرعة اليومية.' },
-  { med: 'إيبوبروفين 400mg', dosage: 'قرص بعد الأكل', timesPerDay: 2, durationDays: 3, instructions: 'تجنب استخدامه مع قرحة المعدة إلا بعد مراجعة الطبيب.' },
-  { med: 'أموكسيسيلين/كلافولانات 1g', dosage: 'قرص كل 12 ساعة', timesPerDay: 2, durationDays: 7, instructions: 'يجب إكمال مدة المضاد الحيوي كاملة.' },
-  { med: 'أزيثرومايسين 500mg', dosage: 'قرص يومياً', timesPerDay: 1, durationDays: 3, instructions: 'يفضل في نفس الموعد يومياً.' },
-  { med: 'سيتريزين 10mg', dosage: 'قرص مساءً', timesPerDay: 1, durationDays: 5, instructions: 'قد يسبب النعاس.' },
-  { med: 'أوميبرازول 20mg', dosage: 'كبسولة قبل الإفطار', timesPerDay: 1, durationDays: 14, instructions: 'يؤخذ قبل الأكل بنصف ساعة.' },
-  { med: 'ميتفورمين 500mg', dosage: 'قرص بعد الأكل', timesPerDay: 2, durationDays: 30, instructions: 'متابعة السكر حسب إرشادات الطبيب.' },
-  { med: 'فيتامين د 50000 IU', dosage: 'كبسولة أسبوعياً', timesPerDay: 1, durationDays: 56, instructions: 'جرعة أسبوعية حسب نتيجة التحليل.' },
-];
+import { addDoctorToCatalog, createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, subscribePlatformSettings, updateAppointmentStatus, updateUserProfile } from '../utils/localDataService';
+import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
+import type { LabResult, MedicineCatalogItem } from '../types';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -46,27 +36,45 @@ export default function DoctorDashboard({ navigation }: any) {
   const [videoPrice, setVideoPrice] = useState(String(user?.doctorVideoPrice ?? 60));
   const [clinicPrice, setClinicPrice] = useState(String(user?.doctorClinicPrice ?? user?.doctorVideoPrice ?? 60));
   const [commissionRate, setCommissionRate] = useState(5);
+  const [earnings, setEarnings] = useState({ balance: user?.balance ?? 0, totalNet: 0, completedNet: 0, pendingNet: 0 });
   const hasAdminAccess = (user?.adminPermissions?.length || 0) > 0;
+  const currencySymbol = user?.currency === 'USD' ? '$' : 'ج.م';
 
   const fetchData = useCallback(async () => {
     if (!user?.uid) return;
     setLoading(true);
-    const [apts, st] = await Promise.all([
+    const [apts, st, allUsers, transactions] = await Promise.all([
       getDoctorAppointments(user.uid),
       getDoctorStats(user.uid),
+      getAllUsers(),
+      getUserTransactions(user.uid),
     ]);
+    const latestDoctor = allUsers.find((item) => item.uid === user.uid);
+    const completedNet = apts
+      .filter((apt) => apt.status === 'مكتمل')
+      .reduce((sum, apt) => sum + Number(apt.doctorNet ?? ((apt.price ?? 0) * (1 - commissionRate / 100))), 0);
+    const pendingNet = apts
+      .filter((apt) => apt.status === 'قادم')
+      .reduce((sum, apt) => sum + Number(apt.doctorNet ?? ((apt.price ?? 0) * (1 - commissionRate / 100))), 0);
+    const transactionNet = transactions
+      .filter((txn) => txn.type === 'in' && txn.provider === 'wallet')
+      .reduce((sum, txn) => sum + Number(txn.amount || 0), 0);
     setAppointments(apts);
     setStats(st);
+    setEarnings({
+      balance: Number(latestDoctor?.balance ?? user.balance ?? 0),
+      totalNet: Number((transactionNet || completedNet + pendingNet).toFixed(2)),
+      completedNet: Number(completedNet.toFixed(2)),
+      pendingNet: Number(pendingNet.toFixed(2)),
+    });
     setLoading(false);
-  }, [user?.uid]);
+  }, [commissionRate, user]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  useEffect(() => {
-    getPlatformSettings().then((settings) => setCommissionRate(settings.commissionRate));
-  }, []);
+  useEffect(() => subscribePlatformSettings((settings) => setCommissionRate(settings.commissionRate)), []);
 
   const handleSavePrices = async () => {
     if (!user?.uid) return;
@@ -162,6 +170,36 @@ export default function DoctorDashboard({ navigation }: any) {
           </View>
         </GlassCard>
 
+        <GlassCard style={styles.earningsCard}>
+          <View style={styles.earningsHeader}>
+            <View>
+              <Text style={styles.earningsTitle}>دخل الطبيب</Text>
+              <Text style={styles.earningsHint}>الصافي بعد خصم نسبة التطبيق الحالية {commissionRate}%</Text>
+            </View>
+            <View style={styles.walletIcon}>
+              <Ionicons name="wallet-outline" size={22} color={COLORS.accentWarm} />
+            </View>
+          </View>
+          <View style={styles.earningsGrid}>
+            <View style={styles.earningItem}>
+              <Text style={styles.earningValue}>{earnings.balance.toFixed(2)} {currencySymbol}</Text>
+              <Text style={styles.earningLabel}>الرصيد الحالي</Text>
+            </View>
+            <View style={styles.earningItem}>
+              <Text style={styles.earningValue}>{earnings.totalNet.toFixed(2)} {currencySymbol}</Text>
+              <Text style={styles.earningLabel}>إجمالي الدخل</Text>
+            </View>
+            <View style={styles.earningItem}>
+              <Text style={styles.earningValue}>{earnings.completedNet.toFixed(2)} {currencySymbol}</Text>
+              <Text style={styles.earningLabel}>مكتمل</Text>
+            </View>
+            <View style={styles.earningItem}>
+              <Text style={styles.earningValue}>{earnings.pendingNet.toFixed(2)} {currencySymbol}</Text>
+              <Text style={styles.earningLabel}>قادم</Text>
+            </View>
+          </View>
+        </GlassCard>
+
         <View style={styles.summaryRow}>
           <StatBox label="المرضى" val={stats.totalPatients.toString()} icon="users" color={COLORS.primaryLight} />
           <StatBox label="قادم" val={stats.upcoming.toString()} icon="calendar" color={COLORS.accentWarm} />
@@ -219,30 +257,33 @@ export default function DoctorDashboard({ navigation }: any) {
                       <Text style={styles.detailText}>{apt.type}</Text>
                     </View>
                   </View>
-                  {apt.status === 'قادم' && (
-                    <View style={styles.aptActions}>
-                      <TouchableOpacity
-                        style={[styles.actionBtn, styles.completeBtn]}
-                        onPress={() => handleStatusChange(apt.id, apt.patientId, 'مكتمل')}
-                      >
-                        <Ionicons name="checkmark" size={16} color="#FFF" />
-                        <Text style={styles.actionBtnText}>إكمال</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.actionBtn, styles.cancelBtn]}
-                        onPress={() => handleStatusChange(apt.id, apt.patientId, 'ملغي')}
-                      >
-                        <Ionicons name="close" size={16} color="#FFF" />
-                        <Text style={styles.actionBtnText}>إلغاء</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.chatBtn}
-                        onPress={() => navigation.navigate('Chat', { doctorName: user?.name, doctorId: user?.uid })}
-                      >
-                        <Ionicons name="chatbubble-outline" size={18} color={COLORS.primaryLight} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                  <View style={styles.aptActions}>
+                    {apt.status === 'قادم' && (
+                      <>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.completeBtn]}
+                          onPress={() => handleStatusChange(apt.id, apt.patientId, 'مكتمل')}
+                        >
+                          <Ionicons name="checkmark" size={16} color="#FFF" />
+                          <Text style={styles.actionBtnText}>إكمال</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.cancelBtn]}
+                          onPress={() => handleStatusChange(apt.id, apt.patientId, 'ملغي')}
+                        >
+                          <Ionicons name="close" size={16} color="#FFF" />
+                          <Text style={styles.actionBtnText}>إلغاء</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                    <TouchableOpacity
+                      style={styles.patientChatBtn}
+                      onPress={() => navigation.navigate('Chat', { doctorName: apt.patientName || 'مريض', doctorId: user?.uid, chatId: `${apt.patientId}_${user?.uid}` })}
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primaryLight} />
+                      <Text style={styles.patientChatText}>دردشة مع المريض</Text>
+                    </TouchableOpacity>
+                  </View>
                 </GlassCard>
               ))
             )}
@@ -278,11 +319,17 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
   const [patientResults, setPatientResults] = useState<LabResult[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [customInstructions, setCustomInstructions] = useState('');
+  const [medicineCatalog, setMedicineCatalog] = useState<MedicineCatalogItem[]>([]);
+  const [customMedicineName, setCustomMedicineName] = useState('');
+  const [customDosage, setCustomDosage] = useState('');
+  const [customTimesPerDay, setCustomTimesPerDay] = useState('1');
+  const [customDurationDays, setCustomDurationDays] = useState('7');
   const [loading, setLoading] = useState(true);
+  const [medicineLoading, setMedicineLoading] = useState(false);
 
   const fetchPrescriptionsData = async () => {
     setLoading(true);
-    const allUsers = await (await import('../utils/localDataService')).getAllUsers();
+    const allUsers = await getAllUsers();
     const doctorAppointments = await getDoctorAppointments(doctorId);
     const patientMap = new Map<string, any>();
 
@@ -321,6 +368,10 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
   }, [doctorId, doctorName]);
 
   useEffect(() => {
+    getCachedMedicineCatalog().then(setMedicineCatalog);
+  }, []);
+
+  useEffect(() => {
     const fetchPatientResults = async () => {
       if (!selectedPatient?.uid) {
         setPatientResults([]);
@@ -332,11 +383,24 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
     fetchPatientResults();
   }, [selectedPatient?.uid]);
 
-  const filteredCatalog = MEDICINE_CATALOG.filter((item) =>
-    `${item.med} ${item.dosage}`.toLowerCase().includes(searchTerm.trim().toLowerCase())
-  );
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setMedicineLoading(true);
+      const data = await searchMedicineCatalog(searchTerm);
+      if (!cancelled) {
+        setMedicineCatalog(data);
+        setMedicineLoading(false);
+      }
+    }, 350);
 
-  const addPrescriptionForPatient = async (medicine: typeof MEDICINE_CATALOG[number]) => {
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchTerm]);
+
+  const addPrescriptionForPatient = async (medicine: MedicineCatalogItem) => {
     if (!selectedPatient?.uid) {
       showInfo('تنبيه', 'اختر مريضاً أولاً من قائمة الحجوزات.');
       return;
@@ -365,6 +429,28 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
     } else {
       showInfo('خطأ', 'تعذر حفظ الوصفة للمريض.');
     }
+  };
+
+  const addCustomPrescription = async () => {
+    const cleanName = customMedicineName.trim();
+    if (!isKnownMedicine(cleanName, medicineCatalog)) {
+      showInfo('تنبيه', 'اكتب اسم دواء معروف ظاهر في الكتالوج أو نتيجة البحث أولاً.');
+      return;
+    }
+    const times = Math.max(1, Number(customTimesPerDay.replace(',', '.')) || 1);
+    const days = Math.max(1, Number(customDurationDays.replace(',', '.')) || 1);
+    await addPrescriptionForPatient({
+      med: cleanName,
+      dosage: customDosage.trim() || 'جرعة يحددها الطبيب',
+      timesPerDay: times,
+      durationDays: days,
+      instructions: customInstructions.trim() || 'حسب تعليمات الطبيب.',
+      source: 'local',
+    });
+    setCustomMedicineName('');
+    setCustomDosage('');
+    setCustomTimesPerDay('1');
+    setCustomDurationDays('7');
   };
 
   const openMedicalFile = (item: LabResult) => {
@@ -426,6 +512,7 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
 
       <GlassCard style={styles.medicineTableCard}>
         <Text style={styles.panelTitle}>كتالوج الأدوية والجرعات</Text>
+        <Text style={styles.catalogHint}>الكتالوج يحدث من الإنترنت كل 5 ساعات عند البحث. الدواء المخصص لازم يكون معروفاً في النتائج.</Text>
         <TextInput
           style={styles.searchInput}
           value={searchTerm}
@@ -433,6 +520,7 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
           placeholder="ابحث باسم الدواء أو الجرعة"
           placeholderTextColor={COLORS.textMuted}
         />
+        {medicineLoading && <Text style={styles.catalogHint}>جاري تحديث نتائج الأدوية...</Text>}
         <TextInput
           style={styles.instructionsInput}
           value={customInstructions}
@@ -441,12 +529,51 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
           placeholderTextColor={COLORS.textMuted}
           multiline
         />
-        {filteredCatalog.map((medicine) => (
+        <View style={styles.customMedicineBox}>
+          <Text style={styles.subPanelTitle}>إضافة دواء مخصص من كتالوج معروف</Text>
+          <TextInput
+            style={styles.searchInput}
+            value={customMedicineName}
+            onChangeText={setCustomMedicineName}
+            placeholder="اسم الدواء كما ظهر في البحث"
+            placeholderTextColor={COLORS.textMuted}
+          />
+          <TextInput
+            style={styles.searchInput}
+            value={customDosage}
+            onChangeText={setCustomDosage}
+            placeholder="الجرعة: مثال قرص بعد الأكل"
+            placeholderTextColor={COLORS.textMuted}
+          />
+          <View style={styles.customDoseRow}>
+            <TextInput
+              style={[styles.searchInput, styles.customDoseInput]}
+              value={customTimesPerDay}
+              onChangeText={setCustomTimesPerDay}
+              placeholder="مرات يومياً"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={[styles.searchInput, styles.customDoseInput]}
+              value={customDurationDays}
+              onChangeText={setCustomDurationDays}
+              placeholder="عدد الأيام"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+            />
+          </View>
+          <TouchableOpacity style={styles.customMedBtn} onPress={addCustomPrescription}>
+            <Ionicons name="checkmark-circle-outline" size={17} color="#FFF" />
+            <Text style={styles.customMedText}>إضافة الدواء المخصص</Text>
+          </TouchableOpacity>
+        </View>
+        {medicineCatalog.map((medicine) => (
           <View key={medicine.med} style={styles.medicineRow}>
             <View style={styles.medicineInfo}>
               <Text style={styles.prescMed}>{medicine.med}</Text>
               <Text style={styles.prescDosage}>{medicine.dosage} • {medicine.timesPerDay} مرة يومياً • {medicine.durationDays} يوم</Text>
-              <Text style={styles.medicineInstructions}>{medicine.instructions}</Text>
+              <Text style={styles.medicineInstructions}>{medicine.instructions}{medicine.source && medicine.source !== 'local' ? ` • المصدر: ${medicine.source}` : ''}</Text>
             </View>
             <TouchableOpacity style={styles.assignMedBtn} onPress={() => addPrescriptionForPatient(medicine)}>
               <Ionicons name="add-circle" size={16} color={COLORS.bgBase} />
@@ -518,6 +645,15 @@ const styles = StyleSheet.create({
   priceInput: { width: 110, color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, textAlign: 'center' },
   savePriceBtn: { backgroundColor: COLORS.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center', marginTop: 4 },
   savePriceText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
+  earningsCard: { padding: 16, marginBottom: 24 },
+  earningsHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  earningsTitle: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
+  earningsHint: { color: COLORS.textSecondary, fontSize: 11, marginTop: 3, textAlign: 'right' },
+  walletIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: COLORS.accentWarm + '22', justifyContent: 'center', alignItems: 'center' },
+  earningsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 10 },
+  earningItem: { width: '48%', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12 },
+  earningValue: { color: COLORS.textPrimary, fontSize: 15, fontWeight: 'bold', textAlign: 'right' },
+  earningLabel: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', marginTop: 4 },
   summaryRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 24, gap: 12 },
   statBox: { width: '22%', padding: 12, alignItems: 'center' },
   statVal: { color: '#FFF', fontSize: 20, fontWeight: 'bold', marginVertical: 6 },
@@ -545,6 +681,8 @@ const styles = StyleSheet.create({
   cancelBtn: { backgroundColor: COLORS.danger },
   actionBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
   chatBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center' },
+  patientChatBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '55' },
+  patientChatText: { color: COLORS.primaryLight, fontSize: 12, fontWeight: 'bold' },
   schedulePlaceholder: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   placeholderText: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold' },
   placeholderSubtext: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center' },
@@ -565,8 +703,14 @@ const styles = StyleSheet.create({
   resultMiniName: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'right' },
   resultMiniMeta: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', marginTop: 3 },
   medicineTableCard: { padding: 16, marginBottom: 18 },
+  catalogHint: { color: COLORS.textMuted, fontSize: 11, lineHeight: 17, textAlign: 'right', marginBottom: 10 },
   searchInput: { color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 10, textAlign: 'right' },
   instructionsInput: { minHeight: 58, color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 12, textAlign: 'right', textAlignVertical: 'top' },
+  customMedicineBox: { borderTopWidth: 1, borderTopColor: COLORS.borderColor, borderBottomWidth: 1, borderBottomColor: COLORS.borderColor, paddingVertical: 12, marginBottom: 6 },
+  customDoseRow: { flexDirection: 'row-reverse', gap: 10 },
+  customDoseInput: { flex: 1 },
+  customMedBtn: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 11 },
+  customMedText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
   medicineRow: { flexDirection: 'row-reverse', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingVertical: 12, gap: 10 },
   medicineInfo: { flex: 1 },
   medicineInstructions: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4, textAlign: 'right' },

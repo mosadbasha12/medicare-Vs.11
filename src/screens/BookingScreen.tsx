@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createPaidAppointment, getAllDoctors, getPlatformSettings } from '../utils/localDataService';
+import { createPaidAppointment, getAllDoctors, subscribePlatformSettings } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 import type { Currency } from '../types';
 
@@ -102,9 +102,7 @@ export default function BookingScreen({ navigation, route }: any) {
   const platformFee = Number((bookingPrice * commissionRate / 100).toFixed(2));
   const doctorNet = Number((bookingPrice - platformFee).toFixed(2));
 
-  React.useEffect(() => {
-    getPlatformSettings().then((settings) => setCommissionRate(settings.commissionRate));
-  }, []);
+  React.useEffect(() => subscribePlatformSettings((settings) => setCommissionRate(settings.commissionRate)), []);
 
   React.useEffect(() => {
     const refreshDoctorPrice = async () => {

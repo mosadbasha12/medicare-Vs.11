@@ -142,13 +142,23 @@ export interface Prescription {
   lastTakenAt?: string;
 }
 
+export interface MedicineCatalogItem {
+  med: string;
+  dosage: string;
+  timesPerDay: number;
+  durationDays: number;
+  instructions: string;
+  source?: 'local' | 'rxnav' | 'openfda';
+  updatedAt?: string;
+}
+
 export type RootStackParamList = {
   Onboarding: undefined;
   Login: undefined;
   Register: undefined;
   MainTabs: undefined;
   ChatList: undefined;
-  Chat: { doctorId?: string; doctorName: string };
+  Chat: { doctorId?: string; doctorName: string; chatId?: string };
   Payment: undefined;
   EditProfile: undefined;
   Language: undefined;

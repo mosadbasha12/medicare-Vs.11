@@ -9,6 +9,7 @@ import {
   getDoc,
   getDocs,
   increment,
+  onSnapshot,
   query,
   setDoc,
   updateDoc,
@@ -292,6 +293,44 @@ export const updatePlatformSettings = async (settings: PlatformSettings, actorRo
   } catch {
     return false;
   }
+};
+
+export const subscribePlatformSettings = (
+  callback: (settings: PlatformSettings) => void
+): (() => void) => {
+  let disposed = false;
+
+  if (FIREBASE_ENABLED) {
+    const unsubscribe = onSnapshot(
+      doc(db, 'settings', 'platform'),
+      (snap) => {
+        if (disposed) return;
+        const settings = snap.exists()
+          ? { ...DEFAULT_PLATFORM_SETTINGS, ...(snap.data() as Partial<PlatformSettings>) }
+          : DEFAULT_PLATFORM_SETTINGS;
+        callback(settings);
+      },
+      async () => {
+        if (!disposed) callback(await getPlatformSettings());
+      }
+    );
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }
+
+  getPlatformSettings().then((settings) => {
+    if (!disposed) callback(settings);
+  });
+  const interval = setInterval(async () => {
+    if (!disposed) callback(await getPlatformSettings());
+  }, 5000);
+
+  return () => {
+    disposed = true;
+    clearInterval(interval);
+  };
 };
 
 const addPlatformBalance = async (amount: number): Promise<void> => {
