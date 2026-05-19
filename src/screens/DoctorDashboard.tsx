@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
+import { createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, sortAppointmentsByWorkflow, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
 import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
@@ -60,7 +60,7 @@ export default function DoctorDashboard({ navigation }: any) {
     const transactionNet = transactions
       .filter((txn) => txn.type === 'in' && txn.provider === 'wallet')
       .reduce((sum, txn) => sum + Number(txn.amount || 0), 0);
-    setAppointments(apts);
+    setAppointments(sortAppointmentsByWorkflow(apts));
     setStats(st);
     setEarnings({
       balance: Number(latestDoctor?.balance ?? user.balance ?? 0),
@@ -78,7 +78,7 @@ export default function DoctorDashboard({ navigation }: any) {
   useEffect(() => {
     if (!user?.uid) return undefined;
     return subscribeDoctorAppointments(user.uid, (nextAppointments) => {
-      setAppointments([...nextAppointments].sort((a, b) => String(b.id).localeCompare(String(a.id))));
+      setAppointments(sortAppointmentsByWorkflow(nextAppointments));
       const uniquePatients = new Set(nextAppointments.map((apt) => apt.patientId)).size;
       setStats({
         totalPatients: uniquePatients,

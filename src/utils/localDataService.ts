@@ -39,6 +39,39 @@ export interface DoctorAppointment extends Appointment {
   patientName: string;
 }
 
+const appointmentStatusRank: Record<Appointment['status'], number> = {
+  'قادم': 0,
+  'مكتمل': 1,
+  'ملغي': 2,
+};
+
+const getAppointmentTimeValue = (appointment: Pick<Appointment, 'date' | 'time' | 'id'>): number => {
+  const candidates = [
+    `${appointment.date} ${appointment.time}`,
+    appointment.date,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Date.parse(candidate);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  const idNumber = Number(String(appointment.id || '').replace(/\D/g, ''));
+  return Number.isFinite(idNumber) && idNumber > 0 ? idNumber : 0;
+};
+
+export const sortAppointmentsByWorkflow = <T extends Appointment>(appointments: T[]): T[] => {
+  return [...appointments].sort((a, b) => {
+    const statusDiff = (appointmentStatusRank[a.status] ?? 9) - (appointmentStatusRank[b.status] ?? 9);
+    if (statusDiff !== 0) return statusDiff;
+
+    const aTime = getAppointmentTimeValue(a);
+    const bTime = getAppointmentTimeValue(b);
+    if (a.status === 'قادم') return aTime - bTime;
+    return bTime - aTime;
+  });
+};
+
 export interface ExtendedPrescription extends Prescription {
   patientName: string;
 }

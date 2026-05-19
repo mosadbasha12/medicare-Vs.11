@@ -4,7 +4,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
-import { cancelAppointment, subscribeUserAppointments } from '../utils/localDataService';
+import { cancelAppointment, sortAppointmentsByWorkflow, subscribeUserAppointments } from '../utils/localDataService';
 import type { Appointment } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -37,7 +37,7 @@ export default function AppointmentsScreen() {
   useEffect(() => {
     if (!user?.uid) return undefined;
     return subscribeUserAppointments(user.uid, (data) => {
-      setAppointments([...data].sort((a, b) => String(b.id).localeCompare(String(a.id))));
+      setAppointments(sortAppointmentsByWorkflow(data));
     });
   }, [user?.uid]);
 
