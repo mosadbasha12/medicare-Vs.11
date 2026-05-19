@@ -1,40 +1,84 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { getAllDoctors, getDoctorStats } from '../utils/localDataService';
-import type { Doctor } from '../types';
+import { canUserReviewDoctor, createDoctorReview, getAllDoctors, getDoctorReviews, getDoctorReviewStats, getDoctorStats } from '../utils/localDataService';
+import type { Doctor, DoctorReview } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { useUser } from '../context/UserContext';
+
+function showMessage(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    alert(`${title}\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 export default function DoctorProfileScreen({ navigation, route }: any) {
   const { t } = useLanguage();
+  const { user } = useUser();
   const doctorId = route.params?.doctorId;
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [stats, setStats] = useState({ totalPatients: 0, completed: 0 });
+  const [reviews, setReviews] = useState<DoctorReview[]>([]);
+  const [canReview, setCanReview] = useState(false);
+  const [ratingValue, setRatingValue] = useState(5);
+  const [comment, setComment] = useState('');
 
   useEffect(() => {
     const fetchDoctor = async () => {
       const doctors = await getAllDoctors();
       const found = doctors.find((item) => item.id === doctorId) || null;
-      setDoctor(found);
+      const [doctorReviews, reviewStats, allowed] = await Promise.all([
+        getDoctorReviews(doctorId),
+        getDoctorReviewStats(doctorId),
+        user?.uid ? canUserReviewDoctor(user.uid, doctorId) : Promise.resolve(false),
+      ]);
+      setReviews(doctorReviews);
+      setCanReview(Boolean(allowed && user?.role === 'user'));
+      setDoctor(found ? { ...found, rating: reviewStats.rating, reviewsCount: reviewStats.reviewsCount } : null);
       if (found) {
         const doctorStats = await getDoctorStats(found.id);
         setStats({ totalPatients: doctorStats.totalPatients, completed: doctorStats.completed });
       }
     };
     fetchDoctor();
-  }, [doctorId]);
+  }, [doctorId, user?.uid, user?.role]);
 
   const currencySymbol = doctor?.currency === 'USD' ? '$' : 'ج.م';
-  const reviews = useMemo(() => {
-    const name = doctor?.name || 'الطبيب';
-    return [
-      { id: '1', name: 'مريض موثق', text: `${name} كان واضح في الشرح والمتابعة ممتازة.`, rating: doctor?.rating || 5 },
-      { id: '2', name: 'مراجعة بعد استشارة', text: 'الاستشارة بدأت في موعدها والتعامل كان محترم ومنظم.', rating: Math.max(4.5, (doctor?.rating || 5) - 0.1) },
-      { id: '3', name: 'مريض سابق', text: 'رد سريع وتوصيات مفهومة بعد الكشف.', rating: Math.max(4.4, (doctor?.rating || 5) - 0.2) },
-    ];
-  }, [doctor]);
+  const ratingLabel = doctor?.reviewsCount ? doctor.rating.toFixed(1) : 'لا يوجد تقييم';
+
+  const submitReview = async () => {
+    if (!user?.uid || !doctor?.id) return;
+    const cleanComment = comment.trim();
+    if (cleanComment.length < 3) {
+      showMessage('تنبيه', 'اكتب تعليق قصير عن تجربتك مع الطبيب.');
+      return;
+    }
+
+    const saved = await createDoctorReview({
+      doctorId: doctor.id,
+      patientId: user.uid,
+      rating: ratingValue,
+      comment: cleanComment,
+    });
+
+    if (!saved) {
+      showMessage('تنبيه', 'التقييم متاح فقط للمريض الذي لديه حجز مع هذا الطبيب.');
+      return;
+    }
+
+    const [doctorReviews, reviewStats] = await Promise.all([
+      getDoctorReviews(doctor.id),
+      getDoctorReviewStats(doctor.id),
+    ]);
+    setReviews(doctorReviews);
+    setDoctor({ ...doctor, rating: reviewStats.rating, reviewsCount: reviewStats.reviewsCount });
+    setComment('');
+    showMessage('تم', 'تم حفظ تقييمك بدون إظهار اسمك للطبيب أو للمرضى.');
+  };
 
   if (!doctor) {
     return (
@@ -84,8 +128,8 @@ export default function DoctorProfileScreen({ navigation, route }: any) {
               <Text style={styles.doctorName}>{doctor.name}</Text>
               <Text style={styles.specialty}>{doctor.specialty}</Text>
               <View style={styles.ratingRow}>
-                <FontAwesome5 name="star" size={14} color={COLORS.accentWarm} solid />
-                <Text style={styles.ratingText}>{doctor.rating.toFixed(1)}</Text>
+                {doctor.reviewsCount ? <FontAwesome5 name="star" size={14} color={COLORS.accentWarm} solid /> : <Ionicons name="star-outline" size={15} color={COLORS.textMuted} />}
+                <Text style={styles.ratingText}>{ratingLabel}</Text>
                 <Text style={styles.ratingSub}>تقييم المرضى</Text>
               </View>
             </View>
@@ -110,18 +154,45 @@ export default function DoctorProfileScreen({ navigation, route }: any) {
 
         <GlassCard style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>تقييمات المرضى</Text>
-          {reviews.map((review) => (
-            <View key={review.id} style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <Text style={styles.reviewName}>{review.name}</Text>
-                <View style={styles.reviewRating}>
-                  <FontAwesome5 name="star" size={11} color={COLORS.accentWarm} solid />
-                  <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
-                </View>
+          {canReview && (
+            <View style={styles.reviewForm}>
+              <Text style={styles.reviewFormTitle}>اكتب تقييمك بدون إظهار اسمك</Text>
+              <View style={styles.starPicker}>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <TouchableOpacity key={value} onPress={() => setRatingValue(value)}>
+                    <FontAwesome5 name="star" size={22} color={value <= ratingValue ? COLORS.accentWarm : COLORS.textMuted} solid />
+                  </TouchableOpacity>
+                ))}
               </View>
-              <Text style={styles.reviewText}>{review.text}</Text>
+              <TextInput
+                style={styles.reviewInput}
+                value={comment}
+                onChangeText={setComment}
+                placeholder="اكتب تجربتك مع الطبيب"
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+              />
+              <TouchableOpacity style={styles.submitReviewBtn} onPress={submitReview}>
+                <Text style={styles.submitReviewText}>حفظ التقييم</Text>
+              </TouchableOpacity>
             </View>
-          ))}
+          )}
+          {reviews.length === 0 ? (
+            <Text style={styles.noReviewsText}>لا توجد تقييمات بعد. سيظهر التقييم هنا بعد أول مراجعة حقيقية من مريض حجز مع الطبيب.</Text>
+          ) : (
+            reviews.map((review) => (
+              <View key={review.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  <Text style={styles.reviewName}>مريض موثق</Text>
+                  <View style={styles.reviewRating}>
+                    <FontAwesome5 name="star" size={11} color={COLORS.accentWarm} solid />
+                    <Text style={styles.reviewRatingText}>{review.rating.toFixed(1)}</Text>
+                  </View>
+                </View>
+                <Text style={styles.reviewText}>{review.comment}</Text>
+              </View>
+            ))
+          )}
         </GlassCard>
 
         <View style={styles.actionRow}>
@@ -183,6 +254,13 @@ const styles = StyleSheet.create({
   infoLabel: { color: COLORS.textSecondary, fontSize: 13 },
   infoValue: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'left', flex: 1 },
   reviewCard: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.borderColor },
+  reviewForm: { backgroundColor: COLORS.primarySofter, borderRadius: 12, borderWidth: 1, borderColor: COLORS.primaryLight + '55', padding: 12, marginBottom: 12 },
+  reviewFormTitle: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginBottom: 10 },
+  starPicker: { flexDirection: 'row-reverse', gap: 8, justifyContent: 'flex-start', marginBottom: 10 },
+  reviewInput: { minHeight: 76, color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, textAlign: 'right', textAlignVertical: 'top', marginBottom: 10 },
+  submitReviewBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  submitReviewText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
+  noReviewsText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 21, textAlign: 'center', paddingVertical: 16 },
   reviewHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   reviewName: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold' },
   reviewRating: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },

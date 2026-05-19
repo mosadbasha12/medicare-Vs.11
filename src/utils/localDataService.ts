@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { AdminPermission, Appointment, LabResult, Prescription, Doctor, ChatMessage, Transaction } from '../types';
+import type { AdminPermission, Appointment, LabResult, Prescription, Doctor, DoctorReview, ChatMessage, Transaction } from '../types';
 import { COLORS, type ThemeId } from '../theme';
 import {
   addDoc,
@@ -204,22 +204,87 @@ export const recordWalletTransaction = async (input: TransactionInput): Promise<
 };
 
 const DEFAULT_DOCTORS: Doctor[] = [
-  { id: '1', name: 'د. سارة ميتشيل', specialty: 'أخصائية قلب', rating: 4.9, emoji: '👩‍⚕️', available: true, price: 50 },
-  { id: '2', name: 'د. أوين برادي', specialty: 'جراحة عامة', rating: 4.7, emoji: '👨‍⚕️', available: true, price: 70 },
-  { id: '3', name: 'د. جيمس كوبر', specialty: 'طب أطفال', rating: 4.8, emoji: '👨‍⚕️', available: true, price: 40 },
+  { id: '1', name: 'د. سارة ميتشيل', specialty: 'أخصائية قلب', rating: 0, reviewsCount: 0, emoji: '👩‍⚕️', available: true, price: 50 },
+  { id: '2', name: 'د. أوين برادي', specialty: 'جراحة عامة', rating: 0, reviewsCount: 0, emoji: '👨‍⚕️', available: true, price: 70 },
+  { id: '3', name: 'د. جيمس كوبر', specialty: 'طب أطفال', rating: 0, reviewsCount: 0, emoji: '👨‍⚕️', available: true, price: 40 },
 ];
+
+export const getDoctorReviews = async (doctorId: string): Promise<DoctorReview[]> => {
+  if (!doctorId) return [];
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const data = await getUserDocData(doctorId);
+      if (Array.isArray(data?.doctorReviews)) {
+        return data.doctorReviews.sort((a: DoctorReview, b: DoctorReview) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      }
+    } catch (error) {
+      console.error('Firebase getDoctorReviews error:', error);
+    }
+  }
+
+  const stored = await AsyncStorage.getItem(`@doctor_reviews_${doctorId}`);
+  return stored ? JSON.parse(stored) : [];
+};
+
+export const getDoctorReviewStats = async (doctorId: string): Promise<{ rating: number; reviewsCount: number }> => {
+  const reviews = await getDoctorReviews(doctorId);
+  if (reviews.length === 0) return { rating: 0, reviewsCount: 0 };
+  const total = reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0);
+  return {
+    rating: Number((total / reviews.length).toFixed(1)),
+    reviewsCount: reviews.length,
+  };
+};
+
+export const canUserReviewDoctor = async (patientId: string, doctorId: string): Promise<boolean> => {
+  if (!patientId || !doctorId) return false;
+  const appointments = await getUserAppointments(patientId);
+  return appointments.some((apt) => apt.doctorId === doctorId && apt.status !== 'ملغي');
+};
+
+export const createDoctorReview = async (
+  reviewInput: Omit<DoctorReview, 'id' | 'createdAt'>
+): Promise<DoctorReview | null> => {
+  try {
+    const canReview = await canUserReviewDoctor(reviewInput.patientId, reviewInput.doctorId);
+    if (!canReview) return null;
+
+    const review: DoctorReview = {
+      ...reviewInput,
+      rating: Math.max(1, Math.min(5, Number(reviewInput.rating) || 1)),
+      comment: reviewInput.comment.trim(),
+      id: `review_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: new Date().toISOString(),
+    };
+    const existing = await getDoctorReviews(review.doctorId);
+    const next = [review, ...existing.filter((item) => item.patientId !== review.patientId)];
+
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', review.doctorId), { doctorReviews: next }, { merge: true });
+    }
+
+    await AsyncStorage.setItem(`@doctor_reviews_${review.doctorId}`, JSON.stringify(next));
+    return review;
+  } catch (error) {
+    console.error('createDoctorReview error:', error);
+    return null;
+  }
+};
 
 export const getAllDoctors = async (): Promise<Doctor[]> => {
   if (FIREBASE_ENABLED) {
     try {
       const snap = await getDocs(query(collection(db, 'users'), where('role', '==', 'doctor'), where('isApproved', '==', true)));
-      const registeredDoctors = snap.docs.map((d) => {
+      const registeredDoctors = await Promise.all(snap.docs.map(async (d) => {
         const u = d.data() as any;
+        const reviewStats = await getDoctorReviewStats(u.uid || d.id);
         return {
           id: u.uid || d.id,
           name: u.name,
           specialty: u.specialty || 'عام',
-          rating: 5.0,
+          rating: reviewStats.rating,
+          reviewsCount: reviewStats.reviewsCount,
           emoji: '👨‍⚕️',
           available: u.isActive !== false,
           bio: u.bio || `طبيب متخصص في ${u.specialty || 'الطب العام'} ويستقبل الاستشارات والحجوزات عبر Medicare.`,
@@ -231,7 +296,7 @@ export const getAllDoctors = async (): Promise<Doctor[]> => {
           clinicPrice: u.doctorClinicPrice ?? u.doctorVideoPrice ?? 60,
           currency: u.currency || 'EGP',
         };
-      });
+      }));
       return [...DEFAULT_DOCTORS, ...registeredDoctors.filter((rd) => !DEFAULT_DOCTORS.some((d) => d.id === rd.id))];
     } catch (error) {
       console.error('Firebase getAllDoctors error:', error);
@@ -247,25 +312,29 @@ export const getAllDoctors = async (): Promise<Doctor[]> => {
   }
 
   const users = await getAllUsers();
-  const registeredDoctors = users
+  const registeredDoctorsWithRatings = await Promise.all(users
     .filter((u) => u.role === 'doctor' && u.isApproved !== false)
-    .map((u) => ({
-      id: u.uid,
-      name: u.name,
-      specialty: u.specialty || 'عام',
-      rating: 5.0,
-      emoji: '👨‍⚕️',
-      available: true,
-      bio: u.bio || `طبيب متخصص في ${u.specialty || 'الطب العام'} ويستقبل الاستشارات والحجوزات عبر Medicare.`,
-      phone: u.phone,
-      clinicLocation: u.clinicLocation,
-      medicalId: u.medicalId,
-      patientsCount: u.patientsCount,
-      price: u.doctorVideoPrice ?? 60,
-      clinicPrice: u.doctorClinicPrice ?? u.doctorVideoPrice ?? 60,
-      currency: u.currency || 'EGP',
-    }))
-    .filter((rd) => !defaultDoctors.some((d) => d.id === rd.id));
+    .map(async (u) => {
+      const reviewStats = await getDoctorReviewStats(u.uid);
+      return {
+        id: u.uid,
+        name: u.name,
+        specialty: u.specialty || 'عام',
+        rating: reviewStats.rating,
+        reviewsCount: reviewStats.reviewsCount,
+        emoji: '👨‍⚕️',
+        available: true,
+        bio: u.bio || `طبيب متخصص في ${u.specialty || 'الطب العام'} ويستقبل الاستشارات والحجوزات عبر Medicare.`,
+        phone: u.phone,
+        clinicLocation: u.clinicLocation,
+        medicalId: u.medicalId,
+        patientsCount: u.patientsCount,
+        price: u.doctorVideoPrice ?? 60,
+        clinicPrice: u.doctorClinicPrice ?? u.doctorVideoPrice ?? 60,
+        currency: u.currency || 'EGP',
+      };
+    }));
+  const registeredDoctors = registeredDoctorsWithRatings.filter((rd) => !defaultDoctors.some((d) => d.id === rd.id));
 
   const merged = [...defaultDoctors, ...registeredDoctors];
 
@@ -292,7 +361,8 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
         id: doctorUser.uid,
         name: doctorUser.name,
         specialty: doctorUser.specialty || 'عام',
-        rating: 5.0,
+        rating: 0,
+        reviewsCount: 0,
         emoji: '👨‍⚕️',
         available: doctorUser.isApproved !== false,
         bio: doctorUser.bio || `طبيب متخصص في ${doctorUser.specialty || 'الطب العام'} ويستقبل الاستشارات والحجوزات عبر Medicare.`,
@@ -332,7 +402,8 @@ export const addDoctorToCatalog = async (doctorUser: any): Promise<boolean> => {
       id: doctorUser.uid,
       name: doctorUser.name,
       specialty: doctorUser.specialty || 'عام',
-      rating: 5.0,
+      rating: 0,
+      reviewsCount: 0,
       emoji: '👨‍⚕️',
       available: doctorUser.isApproved !== false,
       bio: doctorUser.bio || `طبيب متخصص في ${doctorUser.specialty || 'الطب العام'} ويستقبل الاستشارات والحجوزات عبر Medicare.`,

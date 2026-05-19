@@ -60,6 +60,7 @@ export interface Doctor {
   name: string;
   specialty: string;
   rating: number;
+  reviewsCount?: number;
   emoji?: string;
   available: boolean;
   bio?: string;
@@ -70,6 +71,15 @@ export interface Doctor {
   price: number;
   clinicPrice?: number;
   currency?: Currency;
+}
+
+export interface DoctorReview {
+  id: string;
+  doctorId: string;
+  patientId: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
 }
 
 export interface Appointment {

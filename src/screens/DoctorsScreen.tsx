@@ -81,8 +81,8 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
                   <Text style={styles.doctorName}>{item.name}</Text>
                   <Text style={styles.doctorSpec}>{item.specialty}</Text>
                   <View style={styles.ratingRow}>
-                    <FontAwesome5 name="star" size={12} color={COLORS.accentWarm} solid />
-                    <Text style={styles.ratingText}>{item.rating}</Text>
+                    {item.reviewsCount ? <FontAwesome5 name="star" size={12} color={COLORS.accentWarm} solid /> : <Ionicons name="star-outline" size={13} color={COLORS.textMuted} />}
+                    <Text style={styles.ratingText}>{item.reviewsCount ? item.rating.toFixed(1) : 'لا يوجد تقييم'}</Text>
                     <Text style={styles.priceText}> • {item.price} {item.currency === 'USD' ? '$' : 'ج.م'}</Text>
                   </View>
                   <Text style={styles.profileHint}>اضغط لعرض بروفايل الطبيب والتقييمات</Text>
