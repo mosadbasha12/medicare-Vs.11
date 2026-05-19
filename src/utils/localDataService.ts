@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AdminPermission, Appointment, LabResult, Prescription, Doctor, ChatMessage, Transaction } from '../types';
-import { COLORS } from '../theme';
+import { COLORS, type ThemeId } from '../theme';
 import {
   addDoc,
   collection,
@@ -60,6 +60,7 @@ export interface ChatSummary {
 export interface PlatformSettings {
   commissionRate: number;
   instapayHandle: string;
+  themeId: ThemeId;
 }
 
 export interface PaidAppointmentInput extends Omit<Appointment, 'id'> {
@@ -83,6 +84,7 @@ const PLATFORM_BALANCE_KEY = '@platform_balance';
 const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   commissionRate: 5,
   instapayHandle: 'medicare@instapay',
+  themeId: 'ruby',
 };
 
 const formatTransactionDate = (isoDate: string): string => {
@@ -277,11 +279,15 @@ export const getPlatformSettings = async (): Promise<PlatformSettings> => {
   return stored ? { ...DEFAULT_PLATFORM_SETTINGS, ...JSON.parse(stored) } : DEFAULT_PLATFORM_SETTINGS;
 };
 
-export const updatePlatformSettings = async (settings: PlatformSettings, actorRole?: string): Promise<boolean> => {
-  if (actorRole !== 'owner') return false;
+export const updatePlatformSettings = async (
+  settings: PlatformSettings,
+  actorRole?: string
+): Promise<'success' | 'forbidden' | 'failed'> => {
+  if (actorRole !== 'owner') return 'forbidden';
   const cleanSettings: PlatformSettings = {
     commissionRate: Math.max(0, Math.min(30, Number(settings.commissionRate) || 0)),
     instapayHandle: settings.instapayHandle.trim() || DEFAULT_PLATFORM_SETTINGS.instapayHandle,
+    themeId: settings.themeId || DEFAULT_PLATFORM_SETTINGS.themeId,
   };
 
   try {
@@ -289,9 +295,10 @@ export const updatePlatformSettings = async (settings: PlatformSettings, actorRo
       await setDoc(doc(db, 'settings', 'platform'), cleanSettings, { merge: true });
     }
     await AsyncStorage.setItem(PLATFORM_SETTINGS_KEY, JSON.stringify(cleanSettings));
-    return true;
-  } catch {
-    return false;
+    return 'success';
+  } catch (error) {
+    console.error('updatePlatformSettings error:', error);
+    return 'failed';
   }
 };
 

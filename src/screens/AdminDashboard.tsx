@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Switch, Platform, TextInput } from 'react-native';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS } from '../theme';
+import { APP_THEMES, COLORS, type ThemeId } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions, getPlatformSettings, updatePlatformSettings } from '../utils/localDataService';
-import { clearSession, getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
+import { clearSession, getAccountTypeLabel, getPermissionLabel, isOwnerEmail } from '../utils/storage';
 import { useUser } from '../context/UserContext';
 import type { AdminPermission } from '../types';
 
@@ -34,11 +34,12 @@ export default function AdminDashboard({ navigation }: any) {
   const [stats, setStats] = useState({ totalUsers: 0, totalDoctors: 0, totalAppointments: 0, totalPatients: 0, pendingDoctors: 0 });
   const [users, setUsers] = useState<any[]>([]);
   const [pendingDoctors, setPendingDoctors] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'settings' | 'themes'>('overview');
   const [commissionRate, setCommissionRate] = useState('5');
   const [instapayHandle, setInstapayHandle] = useState('medicare@instapay');
+  const [selectedThemeId, setSelectedThemeId] = useState<ThemeId>('ruby');
   const [loading, setLoading] = useState(true);
-  const isOwner = user?.role === 'owner';
+  const isOwner = user?.role === 'owner' || Boolean(user?.email && isOwnerEmail(user.email));
   const adminPermissions = user?.adminPermissions || (user?.role === 'admin' ? ['approveDoctors'] : []);
   const canApproveDoctors = isOwner || adminPermissions.includes('approveDoctors');
   const canManageUsers = isOwner || adminPermissions.includes('manageUsers');
@@ -49,6 +50,7 @@ export default function AdminDashboard({ navigation }: any) {
     { key: 'pending' as const, label: 'طلبات الأطباء', visible: canApproveDoctors },
     { key: 'doctors' as const, label: 'الأطباء', visible: canManageDoctors },
     { key: 'settings' as const, label: 'الدفع', visible: isOwner },
+    { key: 'themes' as const, label: 'الثيمات', visible: isOwner },
   ].filter((tab) => tab.visible);
   const permissionOptions: { key: AdminPermission; label: string }[] = [
     { key: 'approveDoctors', label: 'قبول ورفض الأطباء' },
@@ -84,6 +86,7 @@ export default function AdminDashboard({ navigation }: any) {
       const settings = await getPlatformSettings();
       setCommissionRate(String(settings.commissionRate));
       setInstapayHandle(settings.instapayHandle);
+      setSelectedThemeId(settings.themeId);
     } catch (e) {
       console.error('Error fetching admin data:', e);
     }
@@ -163,8 +166,32 @@ export default function AdminDashboard({ navigation }: any) {
       showInfo('تنبيه', 'النسبة لازم تكون بين 0 و 30%.');
       return;
     }
-    const success = await updatePlatformSettings({ commissionRate: parsedRate, instapayHandle }, user?.role);
-    showInfo(success ? 'تم' : 'خطأ', success ? 'تم حفظ إعدادات الدفع والعمولة.' : 'فشل حفظ الإعدادات. متاح للأونر فقط.');
+    const result = await updatePlatformSettings({ commissionRate: parsedRate, instapayHandle, themeId: selectedThemeId }, isOwner ? 'owner' : user?.role);
+    showInfo(
+      result === 'success' ? 'تم' : 'خطأ',
+      result === 'success'
+        ? 'تم حفظ إعدادات الدفع والعمولة وستظهر عند كل المستخدمين.'
+        : result === 'forbidden'
+          ? 'الحفظ متاح للأونر فقط.'
+          : 'فشل حفظ الإعدادات على السيرفر. راجع صلاحيات Firebase settings/platform.'
+    );
+  };
+
+  const handleSaveThemeSettings = async () => {
+    const parsedRate = Number(commissionRate.replace(',', '.'));
+    const result = await updatePlatformSettings({
+      commissionRate: Number.isFinite(parsedRate) ? parsedRate : 5,
+      instapayHandle,
+      themeId: selectedThemeId,
+    }, isOwner ? 'owner' : user?.role);
+    showInfo(
+      result === 'success' ? 'تم' : 'خطأ',
+      result === 'success'
+        ? 'تم حفظ الثيم. سيتم تطبيقه تلقائياً عند كل المستخدمين.'
+        : result === 'forbidden'
+          ? 'حفظ الثيمات متاح للأونر فقط.'
+          : 'فشل حفظ الثيم على السيرفر. راجع صلاحيات Firebase settings/platform.'
+    );
   };
 
   const handleRejectDoctor = (uid: string, name: string) => {
@@ -303,6 +330,15 @@ export default function AdminDashboard({ navigation }: any) {
                 </View>
                 <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>}
+              {isOwner && <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('themes')}>
+                <View style={styles.actionRight}>
+                  <View style={[styles.actionIconBox, { backgroundColor: COLORS.primaryLight + '22' }]}>
+                    <MaterialCommunityIcons name="palette-outline" size={20} color={COLORS.primaryLight} />
+                  </View>
+                  <Text style={styles.actionLabel}>ثيمات التطبيق</Text>
+                </View>
+                <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>}
             </GlassCard>
           </>
         )}
@@ -331,6 +367,38 @@ export default function AdminDashboard({ navigation }: any) {
             />
             <TouchableOpacity style={styles.saveSettingsBtn} onPress={handleSavePaymentSettings}>
               <Text style={styles.saveSettingsText}>حفظ إعدادات الدفع</Text>
+            </TouchableOpacity>
+          </GlassCard>
+        )}
+
+        {!loading && activeTab === 'themes' && isOwner && (
+          <GlassCard style={styles.settingsCard}>
+            <Text style={styles.settingsTitle}>ثيمات التطبيق</Text>
+            <Text style={styles.settingsHint}>اختار مجموعة ألوان متناسقة، ولما تحفظ هتتسجل في إعدادات المنصة وتطبق عند كل المستخدمين.</Text>
+            <View style={styles.themeGrid}>
+              {APP_THEMES.map((theme) => {
+                const selected = selectedThemeId === theme.id;
+                return (
+                  <TouchableOpacity
+                    key={theme.id}
+                    style={[styles.themeCard, selected && styles.themeCardActive]}
+                    onPress={() => setSelectedThemeId(theme.id)}
+                  >
+                    <View style={styles.themePreviewRow}>
+                      {theme.preview.map((color) => (
+                        <View key={color} style={[styles.themeSwatch, { backgroundColor: color }]} />
+                      ))}
+                    </View>
+                    <View style={styles.themeTitleRow}>
+                      <Text style={[styles.themeName, selected && styles.themeNameActive]}>{theme.name}</Text>
+                      <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={selected ? COLORS.accentWarm : COLORS.textSecondary} />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity style={styles.saveSettingsBtn} onPress={handleSaveThemeSettings}>
+              <Text style={styles.saveSettingsText}>حفظ الثيم وتطبيقه</Text>
             </TouchableOpacity>
           </GlassCard>
         )}
@@ -609,6 +677,14 @@ const styles = StyleSheet.create({
   settingsHint: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', lineHeight: 18, marginBottom: 16 },
   settingsLabel: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'right', marginBottom: 8 },
   settingsInput: { color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 14, textAlign: 'right' },
+  themeGrid: { gap: 12, marginBottom: 16 },
+  themeCard: { borderWidth: 1, borderColor: COLORS.borderColor, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14, padding: 14 },
+  themeCardActive: { borderColor: COLORS.accentWarm, backgroundColor: COLORS.primarySofter },
+  themePreviewRow: { flexDirection: 'row-reverse', gap: 8, marginBottom: 12 },
+  themeSwatch: { flex: 1, height: 34, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  themeTitleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  themeName: { color: COLORS.textSecondary, fontSize: 14, fontWeight: 'bold', textAlign: 'right' },
+  themeNameActive: { color: COLORS.textPrimary },
   saveSettingsBtn: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   saveSettingsText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
 });
