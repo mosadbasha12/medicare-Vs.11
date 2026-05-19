@@ -888,12 +888,26 @@ export const getUserTransactions = async (userId: string): Promise<Transaction[]
 
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
   if (FIREBASE_ENABLED) {
+    const mergedNotifications: any[] = [];
     try {
       const snap = await getDocs(query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc')));
       const firebaseNotifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      if (firebaseNotifications.length > 0) return firebaseNotifications;
+      mergedNotifications.push(...firebaseNotifications);
     } catch (error) {
       console.error('Firebase getUserNotifications error:', error);
+    }
+
+    try {
+      const userData = await getUserDocData(userId);
+      if (Array.isArray(userData?.notifications)) mergedNotifications.push(...userData.notifications);
+    } catch (error) {
+      console.error('Firebase get mirrored notifications error:', error);
+    }
+
+    if (mergedNotifications.length > 0) {
+      const unique = new Map<string, any>();
+      mergedNotifications.forEach((item) => unique.set(item.id || `${item.createdAt}_${item.senderId}`, item));
+      return Array.from(unique.values()).sort((a, b) => new Date(b.createdAt || b.time).getTime() - new Date(a.createdAt || a.time).getTime());
     }
   }
 
@@ -912,6 +926,60 @@ const getRecipientIdFromChat = (chatId: string, senderId: string, explicitRecipi
   if (explicitRecipientId && explicitRecipientId !== senderId) return explicitRecipientId;
   const participants = chatId.split('_').filter(Boolean);
   return participants.find((id) => id !== senderId);
+};
+
+const getUserDocData = async (userId: string): Promise<any | null> => {
+  if (!FIREBASE_ENABLED || !userId) return null;
+  try {
+    const snap = await getDoc(doc(db, 'users', userId));
+    return snap.exists() ? snap.data() : null;
+  } catch (error) {
+    console.error('Firebase getUserDocData error:', error);
+    return null;
+  }
+};
+
+const getUserDocChatMessages = async (userId: string | undefined, chatId: string): Promise<ChatMessage[]> => {
+  if (!userId) return [];
+  const data = await getUserDocData(userId);
+  const messages = data?.chatThreads?.[chatId]?.messages;
+  return Array.isArray(messages) ? messages.map((item: any) => normalizeChatMessage(item.id, chatId, item)) : [];
+};
+
+const mirrorChatToUserDocs = async (
+  participantIds: string[],
+  chatId: string,
+  messages: ChatMessage[]
+): Promise<boolean> => {
+  if (!FIREBASE_ENABLED || participantIds.length === 0) return false;
+
+  const sortedMessages = [...messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const last = sortedMessages[sortedMessages.length - 1];
+  let saved = false;
+
+  for (const participantId of Array.from(new Set(participantIds.filter(Boolean)))) {
+    try {
+      const data = await getUserDocData(participantId);
+      await setDoc(doc(db, 'users', participantId), {
+        chatThreads: {
+          ...(data?.chatThreads || {}),
+          [chatId]: {
+            chatId,
+            participantIds: Array.from(new Set(participantIds.filter(Boolean))),
+            messages: sortedMessages,
+            lastMessage: last?.text || (last?.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
+            lastMessageAt: last?.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      }, { merge: true });
+      saved = true;
+    } catch (error) {
+      console.error('Firebase mirrorChatToUserDocs error:', error);
+    }
+  }
+
+  return saved;
 };
 
 const addLocalNotification = async (userId: string, notification: any): Promise<void> => {
@@ -947,6 +1015,19 @@ const createChatNotification = async (message: ChatMessageInput): Promise<void> 
     } catch (error) {
       console.error('Firebase chat notification error:', error);
     }
+
+    try {
+      const data = await getUserDocData(recipientId);
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+      await setDoc(doc(db, 'users', recipientId), {
+        notifications: [
+          { ...notification, id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` },
+          ...notifications,
+        ].slice(0, 60),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase user notification mirror error:', error);
+    }
   }
 
   await addLocalNotification(recipientId, {
@@ -971,30 +1052,45 @@ const normalizeChatMessage = (id: string, chatId: string, data: any): ChatMessag
 export const sendMessage = async (message: ChatMessageInput): Promise<boolean> => {
   const chatId = message.chatId;
   const recipientId = getRecipientIdFromChat(chatId, message.senderId, message.recipientId);
+  if (!recipientId) return false;
   const localMessage = {
     ...message,
     recipientId,
     id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   };
+  const participantIds = [message.senderId, recipientId];
+  let savedToSharedStore = false;
 
   try {
     if (FIREBASE_ENABLED) {
       const { id, ...payload } = localMessage;
+      await setDoc(doc(db, 'chats', chatId), {
+        chatId,
+        participantIds,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
       const docRef = await addDoc(collection(db, 'chats', chatId, 'messages'), {
         ...payload,
         createdAt: serverTimestamp(),
       });
       localMessage.id = docRef.id;
+      savedToSharedStore = true;
     }
+  } catch (error) {
+    console.error('sendMessage primary chat error:', error);
+  }
 
+  try {
     const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
     const msgs = stored ? JSON.parse(stored) : [];
     if (!msgs.some((item: ChatMessage) => item.id === localMessage.id)) {
       msgs.push(localMessage);
       await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
     }
+    const mirrored = await mirrorChatToUserDocs(participantIds, chatId, msgs);
+    savedToSharedStore = savedToSharedStore || mirrored || !FIREBASE_ENABLED;
     await createChatNotification(localMessage);
-    return true;
+    return savedToSharedStore;
   } catch (error) {
     console.error('sendMessage error:', error);
     try {
@@ -1002,8 +1098,9 @@ export const sendMessage = async (message: ChatMessageInput): Promise<boolean> =
       const msgs = stored ? JSON.parse(stored) : [];
       msgs.push(localMessage);
       await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
+      const mirrored = await mirrorChatToUserDocs(participantIds, chatId, msgs);
       await createChatNotification(localMessage);
-      return !FIREBASE_ENABLED;
+      return mirrored || !FIREBASE_ENABLED;
     } catch {
       return false;
     }
@@ -1013,6 +1110,7 @@ export const sendMessage = async (message: ChatMessageInput): Promise<boolean> =
 export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[]> => {
   const doctors = await getAllDoctors();
   const summaries: ChatSummary[] = [];
+  const mirroredThreads = (await getUserDocData(userId))?.chatThreads || {};
 
   for (const doctor of doctors) {
     const chatId = `${userId}_${doctor.id}`;
@@ -1028,6 +1126,9 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
     if (messages.length === 0) {
       const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
       messages = stored ? JSON.parse(stored) : [];
+    }
+    if (messages.length === 0 && Array.isArray(mirroredThreads?.[chatId]?.messages)) {
+      messages = mirroredThreads[chatId].messages.map((item: any) => normalizeChatMessage(item.id, chatId, item));
     }
     if (messages.length === 0) continue;
 
@@ -1047,7 +1148,7 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
   return summaries.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 };
 
-const getChatMessages = async (chatId: string): Promise<ChatMessage[]> => {
+const getChatMessages = async (chatId: string, viewerId?: string): Promise<ChatMessage[]> => {
   let messages: ChatMessage[] = [];
   if (FIREBASE_ENABLED) {
     try {
@@ -1061,12 +1162,26 @@ const getChatMessages = async (chatId: string): Promise<ChatMessage[]> => {
     const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
     messages = stored ? JSON.parse(stored) : [];
   }
+  if (messages.length === 0) {
+    messages = await getUserDocChatMessages(viewerId, chatId);
+  }
   return messages;
 };
 
 export const getDoctorChatSummaries = async (doctorId: string): Promise<ChatSummary[]> => {
   const chatIds = new Set<string>();
   const patientNames = new Map<string, string>();
+  const doctorDocData = await getUserDocData(doctorId);
+
+  if (doctorDocData?.chatThreads) {
+    Object.entries(doctorDocData.chatThreads).forEach(([chatId, thread]: [string, any]) => {
+      chatIds.add(chatId);
+      const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+      const patientMessage = messages.find((item: any) => item.senderId && item.senderId !== doctorId && item.senderName);
+      const patientId = thread?.participantIds?.find?.((id: string) => id && id !== doctorId) || patientMessage?.senderId;
+      if (patientId && patientMessage?.senderName) patientNames.set(patientId, patientMessage.senderName);
+    });
+  }
 
   try {
     const [appointments, users] = await Promise.all([getDoctorAppointments(doctorId), getAllUsers()]);
@@ -1097,7 +1212,7 @@ export const getDoctorChatSummaries = async (doctorId: string): Promise<ChatSumm
 
   const summaries: ChatSummary[] = [];
   for (const chatId of chatIds) {
-    const messages = await getChatMessages(chatId);
+    const messages = await getChatMessages(chatId, doctorId);
     if (messages.length === 0) continue;
     const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
     const patientId = chatId.split('_').find((id) => id && id !== doctorId) || last.senderId;
@@ -1119,13 +1234,19 @@ export const getDoctorChatSummaries = async (doctorId: string): Promise<ChatSumm
 
 export const listenToMessages = (
   chatId: string,
-  callback: (messages: any[]) => void
+  callback: (messages: any[]) => void,
+  viewerId?: string
 ): (() => void) => {
   let disposed = false;
 
   const fetchMessages = async () => {
     const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
-    const msgs = stored ? JSON.parse(stored) : [];
+    let msgs = stored ? JSON.parse(stored) : [];
+    const mirrored = await getUserDocChatMessages(viewerId, chatId);
+    if (mirrored.length > msgs.length) {
+      msgs = mirrored;
+      await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
+    }
     if (!disposed) callback(msgs);
   };
 

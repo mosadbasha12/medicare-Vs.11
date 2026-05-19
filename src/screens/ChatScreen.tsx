@@ -23,9 +23,9 @@ export default function ChatScreen(props: any) {
   useEffect(() => {
     const unsubscribe = listenToMessages(chatId, (msgs) => {
       setMessages(msgs);
-    });
+    }, user?.uid);
     return () => unsubscribe();
-  }, [chatId]);
+  }, [chatId, user?.uid]);
 
   const sendNewMessage = async () => {
     if (!input.trim() || !user || !hasChatTarget) return;
