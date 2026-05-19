@@ -31,6 +31,7 @@ import DoctorScheduleScreen from '../screens/DoctorScheduleScreen';
 import BookingScreen from '../screens/BookingScreen';
 import PrivacySecurityScreen from '../screens/PrivacySecurityScreen';
 import DoctorProfileScreen from '../screens/DoctorProfileScreen';
+import PatientMedicalFileScreen from '../screens/PatientMedicalFileScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -107,6 +108,7 @@ export default function AppNavigator() {
           <Stack.Screen name="ChatList" component={ChatListScreen} />
           <Stack.Screen name="Chat" component={ChatScreen} />
           <Stack.Screen name="DoctorProfile" component={DoctorProfileScreen} />
+          <Stack.Screen name="PatientMedicalFile" component={PatientMedicalFileScreen} />
           <Stack.Screen name="Payment" component={PaymentScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="Language" component={LanguageScreen} />

@@ -915,6 +915,15 @@ export const createUserResult = async (result: Omit<LabResult, 'id'>): Promise<L
       await setDoc(doc(db, 'users', result.userId), { labResults: existing }, { merge: true });
     }
     await AsyncStorage.setItem(`@results_${result.userId}`, JSON.stringify(existing));
+    if (result.doctorId) {
+      await createMedicalRecordNotification({
+        userId: result.userId,
+        title: `طلب طبي جديد من ${result.doctorName || 'الطبيب'}`,
+        desc: `${result.name} تمت إضافته إلى نتائجك وملفاتك الطبية.`,
+        icon: result.category === 'xray' ? 'x-ray' : 'vial',
+        color: COLORS.accentWarm,
+      });
+    }
     return newResult;
   } catch {
     return null;
@@ -953,6 +962,13 @@ export const createPrescription = async (prescription: Omit<Prescription, 'id'>)
       await setDoc(doc(db, 'users', userId), { prescriptions: existing }, { merge: true });
     }
     await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(existing));
+    await createMedicalRecordNotification({
+      userId,
+      title: `وصفة جديدة من ${prescription.doctor || 'الطبيب'}`,
+      desc: `${prescription.med} تمت إضافته إلى وصفاتك.`,
+      icon: 'prescription-bottle-alt',
+      color: COLORS.secondary,
+    });
     return newPrescription;
   } catch {
     return null;
@@ -1419,6 +1435,49 @@ const createChatNotification = async (message: ChatMessageInput): Promise<void> 
     ...notification,
     id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   });
+};
+
+const createMedicalRecordNotification = async (input: {
+  userId: string;
+  title: string;
+  desc: string;
+  icon: string;
+  color: string;
+}): Promise<void> => {
+  const notification = {
+    id: `medical_notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: input.userId,
+    title: input.title,
+    desc: input.desc,
+    time: new Date().toLocaleString('ar-EG'),
+    icon: input.icon,
+    color: input.color,
+    read: false,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (FIREBASE_ENABLED) {
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        ...notification,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Firebase medical notification error:', error);
+    }
+
+    try {
+      const data = await getUserDocData(input.userId);
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+      await setDoc(doc(db, 'users', input.userId), {
+        notifications: [notification, ...notifications].slice(0, 80),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase medical notification mirror error:', error);
+    }
+  }
+
+  await addLocalNotification(input.userId, notification);
 };
 
 const normalizeChatMessage = (id: string, chatId: string, data: any): ChatMessage => ({

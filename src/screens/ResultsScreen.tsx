@@ -133,15 +133,24 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
                <View style={styles.mainInfo}>
                   <Text style={styles.resultName}>{item.name}</Text>
                   <Text style={styles.resultSub}>{item.lab} • {item.date}</Text>
+                  {!!item.doctorName && <Text style={styles.requestDoctor}>طلب الطبيب: {item.doctorName}</Text>}
+                  {!!item.notes && <Text style={styles.requestNotes}>{item.notes}</Text>}
                </View>
-               <View style={[styles.statusBadge, { backgroundColor: COLORS.secondary + '22' }]}>
-                  <Text style={[styles.statusText, { color: COLORS.secondary }]}>{t('uploaded')}</Text>
+               <View style={[styles.statusBadge, { backgroundColor: item.fileData ? COLORS.secondary + '22' : COLORS.accentWarm + '22' }]}>
+                  <Text style={[styles.statusText, { color: item.fileData ? COLORS.secondary : COLORS.accentWarm }]}>{item.fileData ? t('uploaded') : 'مطلوب'}</Text>
                </View>
             </View>
-            <TouchableOpacity style={styles.downloadBtn} onPress={() => downloadFile(item)}>
-               <Ionicons name="download-outline" size={18} color={COLORS.primaryLight} />
-               <Text style={styles.downloadText}>{t('downloadReport')}</Text>
-            </TouchableOpacity>
+            {item.fileData ? (
+              <TouchableOpacity style={styles.downloadBtn} onPress={() => downloadFile(item)}>
+                 <Ionicons name="download-outline" size={18} color={COLORS.primaryLight} />
+                 <Text style={styles.downloadText}>{t('downloadReport')}</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.requestHintBox}>
+                <Ionicons name="information-circle-outline" size={18} color={COLORS.accentWarm} />
+                <Text style={styles.requestHintText}>هذا طلب من الطبيب. ارفع الملف بعد عمل التحليل أو الأشعة ليظهر للطبيب.</Text>
+              </View>
+            )}
           </GlassCard>
         )}
       />
@@ -170,10 +179,14 @@ const styles = StyleSheet.create({
   mainInfo: { flex: 1 },
   resultName: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
   resultSub: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 4 },
+  requestDoctor: { color: COLORS.accentWarm, fontSize: 11, textAlign: 'right', marginTop: 4 },
+  requestNotes: { color: COLORS.textMuted, fontSize: 11, textAlign: 'right', marginTop: 4, lineHeight: 17 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 10, fontWeight: 'bold' },
   downloadBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingTop: 12 },
   downloadText: { color: COLORS.primaryLight, fontSize: 13, fontWeight: 'bold', marginRight: 8 },
+  requestHintBox: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingTop: 12, gap: 6 },
+  requestHintText: { color: COLORS.accentWarm, fontSize: 12, fontWeight: 'bold', textAlign: 'center', flex: 1 },
   emptyState: { alignItems: 'center', marginTop: 70, paddingHorizontal: 24 },
   emptyTitle: { color: COLORS.textPrimary, textAlign: 'center', fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
   emptyText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14, lineHeight: 22 },

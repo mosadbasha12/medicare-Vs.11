@@ -139,6 +139,9 @@ export interface LabResult {
   fileName?: string;
   fileData?: string;
   mimeType?: string;
+  doctorId?: string;
+  doctorName?: string;
+  notes?: string;
 }
 
 export interface Prescription {
@@ -176,6 +179,7 @@ export type RootStackParamList = {
   ChatList: undefined;
   Chat: { doctorId?: string; doctorName: string; chatId?: string; recipientId?: string };
   DoctorProfile: { doctorId: string };
+  PatientMedicalFile: { patientId: string; patientName?: string; doctorId?: string };
   Payment: undefined;
   EditProfile: undefined;
   Language: undefined;

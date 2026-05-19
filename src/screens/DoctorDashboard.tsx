@@ -332,6 +332,13 @@ export default function DoctorDashboard({ navigation }: any) {
                       <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primaryLight} />
                       <Text style={styles.patientChatText}>دردشة مع المريض</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.patientFileBtn}
+                      onPress={() => navigation.navigate('PatientMedicalFile', { patientId: apt.patientId, patientName: apt.patientName, doctorId: user?.uid })}
+                    >
+                      <Ionicons name="document-text-outline" size={18} color={COLORS.accentWarm} />
+                      <Text style={styles.patientFileText}>الملف الطبي</Text>
+                    </TouchableOpacity>
                   </View>
                 </GlassCard>
               ))
@@ -354,14 +361,14 @@ export default function DoctorDashboard({ navigation }: any) {
         )}
 
         {!loading && activeTab === 'prescriptions' && (
-          <PrescriptionsTab doctorId={user?.uid || ''} doctorName={user?.name || ''} />
+          <PrescriptionsTab doctorId={user?.uid || ''} doctorName={user?.name || ''} navigation={navigation} />
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorName: string }) {
+function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: string; doctorName: string; navigation: any }) {
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
@@ -541,6 +548,13 @@ function PrescriptionsTab({ doctorId, doctorName }: { doctorId: string; doctorNa
           <Text style={styles.panelTitle}>ملف المريض: {selectedPatient.name}</Text>
           <Text style={styles.patientMeta}>آخر حجز: {selectedPatient.lastAppointment} • الحالة: {selectedPatient.status}</Text>
           <Text style={styles.patientMeta}>الهاتف: {selectedPatient.phone || 'غير مسجل'} • البريد: {selectedPatient.email || 'غير مسجل'}</Text>
+          <TouchableOpacity
+            style={styles.openFullFileBtn}
+            onPress={() => navigation.navigate('PatientMedicalFile', { patientId: selectedPatient.uid, patientName: selectedPatient.name, doctorId })}
+          >
+            <Ionicons name="document-text-outline" size={17} color={COLORS.bgBase} />
+            <Text style={styles.openFullFileText}>فتح الملف الطبي الكامل وطلب تحاليل</Text>
+          </TouchableOpacity>
           <Text style={styles.subPanelTitle}>التحاليل والأشعة والملفات المرفوعة</Text>
           {patientResults.length === 0 ? (
             <Text style={styles.emptyInline}>لا توجد ملفات طبية مرفوعة لهذا المريض.</Text>
@@ -736,6 +750,8 @@ const styles = StyleSheet.create({
   chatBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center' },
   patientChatBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '55' },
   patientChatText: { color: COLORS.primaryLight, fontSize: 12, fontWeight: 'bold' },
+  patientFileBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 12, backgroundColor: COLORS.accentWarm + '18', borderWidth: 1, borderColor: COLORS.accentWarm + '55' },
+  patientFileText: { color: COLORS.accentWarm, fontSize: 12, fontWeight: 'bold' },
   schedulePlaceholder: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   placeholderText: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold' },
   placeholderSubtext: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center' },
@@ -750,6 +766,8 @@ const styles = StyleSheet.create({
   patientChipTextActive: { color: COLORS.bgBase },
   patientFileCard: { padding: 16, marginBottom: 16 },
   patientMeta: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: 3 },
+  openFullFileBtn: { marginTop: 12, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: COLORS.accentWarm, borderRadius: 12, paddingVertical: 10 },
+  openFullFileText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
   emptyInline: { color: COLORS.textMuted, fontSize: 12, textAlign: 'right', marginTop: 8 },
   resultMiniCard: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 10, marginTop: 8, gap: 10 },
   resultMiniInfo: { flex: 1 },
