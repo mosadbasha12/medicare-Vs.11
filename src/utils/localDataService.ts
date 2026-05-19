@@ -107,6 +107,15 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   themeId: 'ruby',
 };
 
+const createVideoMeetingFields = (appointmentId: string, type: Appointment['type']) => {
+  if (type !== 'مكالمة فيديو') return {};
+  const meetingRoom = `medicare-${appointmentId}`;
+  return {
+    meetingRoom,
+    meetingUrl: `https://meet.jit.si/${meetingRoom}`,
+  };
+};
+
 const normalizePlatformSettings = (settings?: Partial<PlatformSettings> | null): PlatformSettings => ({
   commissionRate: Math.max(0, Math.min(30, Number(settings?.commissionRate ?? DEFAULT_PLATFORM_SETTINGS.commissionRate) || 0)),
   instapayHandle: settings?.instapayHandle?.trim() || DEFAULT_PLATFORM_SETTINGS.instapayHandle,
@@ -440,10 +449,14 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
         return { status: 'insufficient_balance', required: apt.price, balance: patient?.balance ?? 0 };
       }
 
-      await addDoc(collection(db, 'appointments'), {
+      const appointmentRef = doc(collection(db, 'appointments'));
+      const videoFields = createVideoMeetingFields(appointmentRef.id, apt.type);
+      await setDoc(appointmentRef, {
         ...apt,
+        id: appointmentRef.id,
         patientId: apt.userId,
         patientName: patient?.name || 'مريض',
+        ...videoFields,
         platformFee,
         doctorNet,
         paidAt: new Date().toISOString(),
@@ -481,6 +494,15 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
           description: `تم خصم عمولة التطبيق ${platformFee} ${apt.currency}`,
         });
       }
+      await createAppointmentNotification({
+        doctorId: apt.doctorId,
+        patientId: apt.userId,
+        patientName: patient?.name || 'مريض',
+        doctorName: apt.doctorName,
+        date: apt.date,
+        time: apt.time,
+        appointmentId: appointmentRef.id,
+      });
       return { status: 'success', updatedUser, platformFee, doctorNet };
     }
 
@@ -503,9 +525,11 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
       users[doctorIdx].balance = Number(((users[doctorIdx].balance ?? 0) + doctorNet).toFixed(2));
     }
 
+    const localAppointmentId = `apt_${Date.now()}`;
     const newApt = {
       ...apt,
-      id: `apt_${Date.now()}`,
+      id: localAppointmentId,
+      ...createVideoMeetingFields(localAppointmentId, apt.type),
       platformFee,
       doctorNet,
       paidAt: new Date().toISOString(),
@@ -592,7 +616,9 @@ export const getUserAppointments = async (userId: string): Promise<Appointment[]
   if (FIREBASE_ENABLED) {
     try {
       const snap = await getDocs(query(collection(db, 'appointments'), where('userId', '==', userId)));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Appointment));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Appointment))
+        .filter((apt: any) => apt.type !== 'chatThread');
     } catch (error) {
       console.error('Firebase getUserAppointments error:', error);
     }
@@ -606,7 +632,9 @@ export const getDoctorAppointments = async (doctorId: string): Promise<DoctorApp
   if (FIREBASE_ENABLED) {
     try {
       const snap = await getDocs(query(collection(db, 'appointments'), where('doctorId', '==', doctorId)));
-      return snap.docs.map((d) => ({ id: d.id, ...d.data() } as DoctorAppointment));
+      return snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as DoctorAppointment))
+        .filter((apt: any) => apt.type !== 'chatThread');
     } catch (error) {
       console.error('Firebase getDoctorAppointments error:', error);
     }
@@ -630,6 +658,82 @@ export const getDoctorAppointments = async (doctorId: string): Promise<DoctorApp
     }
   }
   return allAppointments;
+};
+
+export const subscribeUserAppointments = (
+  userId: string | undefined,
+  callback: (appointments: Appointment[]) => void
+): (() => void) => {
+  if (!userId) {
+    callback([]);
+    return () => undefined;
+  }
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const q = query(collection(db, 'appointments'), where('userId', '==', userId));
+      const unsubscribe = onSnapshot(q, (snap) => {
+        const appointments = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Appointment))
+          .filter((apt: any) => apt.type !== 'chatThread');
+        callback(appointments);
+      }, async () => {
+        callback(await getUserAppointments(userId));
+      });
+      return unsubscribe;
+    } catch (error) {
+      console.error('Firebase subscribeUserAppointments error:', error);
+    }
+  }
+
+  let disposed = false;
+  const fetch = async () => {
+    if (!disposed) callback(await getUserAppointments(userId));
+  };
+  fetch();
+  const interval = setInterval(fetch, 3000);
+  return () => {
+    disposed = true;
+    clearInterval(interval);
+  };
+};
+
+export const subscribeDoctorAppointments = (
+  doctorId: string | undefined,
+  callback: (appointments: DoctorAppointment[]) => void
+): (() => void) => {
+  if (!doctorId) {
+    callback([]);
+    return () => undefined;
+  }
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const q = query(collection(db, 'appointments'), where('doctorId', '==', doctorId));
+      const unsubscribe = onSnapshot(q, (snap) => {
+        const appointments = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as DoctorAppointment))
+          .filter((apt: any) => apt.type !== 'chatThread');
+        callback(appointments);
+      }, async () => {
+        callback(await getDoctorAppointments(doctorId));
+      });
+      return unsubscribe;
+    } catch (error) {
+      console.error('Firebase subscribeDoctorAppointments error:', error);
+    }
+  }
+
+  let disposed = false;
+  const fetch = async () => {
+    if (!disposed) callback(await getDoctorAppointments(doctorId));
+  };
+  fetch();
+  const interval = setInterval(fetch, 3000);
+  return () => {
+    disposed = true;
+    clearInterval(interval);
+  };
 };
 
 const updateCachedUser = async (uid: string, updates: Record<string, any>): Promise<void> => {
@@ -672,13 +776,25 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
     try {
       const users = await getAllUsers();
       const patient = users.find((u) => u.uid === apt.userId);
-      await addDoc(collection(db, 'appointments'), {
+      const appointmentRef = doc(collection(db, 'appointments'));
+      await setDoc(appointmentRef, {
         ...apt,
+        id: appointmentRef.id,
         patientId: apt.userId,
         patientName: patient?.name || 'مريض',
+        ...createVideoMeetingFields(appointmentRef.id, apt.type),
         createdAt: new Date().toISOString(),
       });
       await incrementConsultationsCount(apt.userId);
+      await createAppointmentNotification({
+        doctorId: apt.doctorId,
+        patientId: apt.userId,
+        patientName: patient?.name || 'مريض',
+        doctorName: apt.doctorName,
+        date: apt.date,
+        time: apt.time,
+        appointmentId: appointmentRef.id,
+      });
       return true;
     } catch (error) {
       console.error('Firebase createAppointment error:', error);
@@ -688,7 +804,8 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
 
   const userId = apt.userId;
   const existing = await getUserAppointments(userId);
-  const newApt = { ...apt, id: `apt_${Date.now()}` };
+  const localAppointmentId = `apt_${Date.now()}`;
+  const newApt = { ...apt, id: localAppointmentId, ...createVideoMeetingFields(localAppointmentId, apt.type) };
   existing.push(newApt);
   await AsyncStorage.setItem(`@appointments_${userId}`, JSON.stringify(existing));
   await incrementConsultationsCount(userId);
@@ -1138,6 +1255,53 @@ const addLocalNotification = async (userId: string, notification: any): Promise<
   const notifications = stored ? JSON.parse(stored) : [];
   notifications.unshift(notification);
   await AsyncStorage.setItem(`@notifications_${userId}`, JSON.stringify(notifications));
+};
+
+const createAppointmentNotification = async (input: {
+  doctorId: string;
+  patientId: string;
+  patientName: string;
+  doctorName: string;
+  date: string;
+  time: string;
+  appointmentId: string;
+}): Promise<void> => {
+  const notification = {
+    id: `apt_notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: input.doctorId,
+    title: `حجز جديد من ${input.patientName || 'مريض'}`,
+    desc: `موعد مع ${input.patientName || 'مريض'} يوم ${input.date} الساعة ${input.time}`,
+    time: new Date().toLocaleString('ar-EG'),
+    icon: 'calendar-check',
+    color: COLORS.accentWarm,
+    read: false,
+    createdAt: new Date().toISOString(),
+    appointmentId: input.appointmentId,
+    patientId: input.patientId,
+  };
+
+  if (FIREBASE_ENABLED) {
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        ...notification,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Firebase appointment notification error:', error);
+    }
+
+    try {
+      const data = await getUserDocData(input.doctorId);
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+      await setDoc(doc(db, 'users', input.doctorId), {
+        notifications: [notification, ...notifications].slice(0, 80),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase appointment notification mirror error:', error);
+    }
+  }
+
+  await addLocalNotification(input.doctorId, notification);
 };
 
 const createChatNotification = async (message: ChatMessageInput): Promise<void> => {

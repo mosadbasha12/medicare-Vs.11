@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput, Linking } from 'react-native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { addDoctorToCatalog, createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus, updateUserProfile } from '../utils/localDataService';
+import { addDoctorToCatalog, createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus, updateUserProfile } from '../utils/localDataService';
 import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
@@ -75,6 +75,21 @@ export default function DoctorDashboard({ navigation }: any) {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+    return subscribeDoctorAppointments(user.uid, (nextAppointments) => {
+      setAppointments([...nextAppointments].sort((a, b) => String(b.id).localeCompare(String(a.id))));
+      const uniquePatients = new Set(nextAppointments.map((apt) => apt.patientId)).size;
+      setStats({
+        totalPatients: uniquePatients,
+        upcoming: nextAppointments.filter((apt) => apt.status === 'قادم').length,
+        completed: nextAppointments.filter((apt) => apt.status === 'مكتمل').length,
+        cancelled: nextAppointments.filter((apt) => apt.status === 'ملغي').length,
+      });
+      setLoading(false);
+    });
+  }, [user?.uid]);
+
   useEffect(() => subscribePlatformSettings((settings) => setCommissionRate(settings.commissionRate)), []);
 
   useEffect(() => subscribeUnreadChatCount(user?.uid, setUnreadChats), [user?.uid]);
@@ -118,6 +133,11 @@ export default function DoctorDashboard({ navigation }: any) {
     showConfirmation('تسجيل خروج', 'هل تريد تسجيل الخروج؟', () => {
       setUser(null);
     });
+  };
+
+  const openVideoCall = (apt: any) => {
+    const room = apt.meetingUrl || `https://meet.jit.si/medicare-${apt.id}`;
+    Linking.openURL(room);
   };
 
   return (
@@ -272,6 +292,15 @@ export default function DoctorDashboard({ navigation }: any) {
                   <View style={styles.aptActions}>
                     {apt.status === 'قادم' && (
                       <>
+                        {apt.type === 'مكالمة فيديو' && (
+                          <TouchableOpacity
+                            style={[styles.actionBtn, styles.videoBtn]}
+                            onPress={() => openVideoCall(apt)}
+                          >
+                            <Ionicons name="videocam-outline" size={16} color="#FFF" />
+                            <Text style={styles.actionBtnText}>دخول الفيديو</Text>
+                          </TouchableOpacity>
+                        )}
                         <TouchableOpacity
                           style={[styles.actionBtn, styles.completeBtn]}
                           onPress={() => handleStatusChange(apt.id, apt.patientId, 'مكتمل')}
@@ -691,6 +720,7 @@ const styles = StyleSheet.create({
   detailText: { color: COLORS.textSecondary, fontSize: 12, marginRight: 6 },
   aptActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
   actionBtn: { flexDirection: 'row-reverse', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10, gap: 6 },
+  videoBtn: { backgroundColor: COLORS.primary },
   completeBtn: { backgroundColor: COLORS.secondary },
   cancelBtn: { backgroundColor: COLORS.danger },
   actionBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },

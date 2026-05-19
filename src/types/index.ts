@@ -75,6 +75,8 @@ export interface Appointment {
   currency?: Currency;
   platformFee?: number;
   doctorNet?: number;
+  meetingUrl?: string;
+  meetingRoom?: string;
 }
 
 export interface ChatMessage {

@@ -4,7 +4,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
-import { getUserAppointments, cancelAppointment } from '../utils/localDataService';
+import { cancelAppointment, subscribeUserAppointments } from '../utils/localDataService';
 import type { Appointment } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -34,14 +34,11 @@ export default function AppointmentsScreen() {
   const { t } = useLanguage();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-  const fetchAppointments = async () => {
-    if (!user?.uid) return;
-    const data = await getUserAppointments(user.uid);
-    setAppointments(data);
-  };
-
   useEffect(() => {
-    fetchAppointments();
+    if (!user?.uid) return undefined;
+    return subscribeUserAppointments(user.uid, (data) => {
+      setAppointments([...data].sort((a, b) => String(b.id).localeCompare(String(a.id))));
+    });
   }, [user?.uid]);
 
   const handleCancel = (aptId: string) => {
@@ -49,7 +46,6 @@ export default function AppointmentsScreen() {
       const success = await cancelAppointment(aptId, user!.uid);
       if (success) {
         showInfo(t('done'), t('appointmentCancelled'));
-        fetchAppointments();
       } else {
         showInfo(t('error'), t('appointmentCancelFailed'));
       }
@@ -58,7 +54,7 @@ export default function AppointmentsScreen() {
 
   const handleJoin = (item: Appointment) => {
     if (item.type === 'مكالمة فيديو') {
-      const room = `https://meet.jit.si/medicare-${item.id}`;
+      const room = item.meetingUrl || `https://meet.jit.si/medicare-${item.id}`;
       Linking.openURL(room);
       return;
     }

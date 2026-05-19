@@ -4,7 +4,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getUserAppointments, getUserResults, getUserPrescriptions, subscribeUnreadChatCount } from '../utils/localDataService';
+import { getUserResults, getUserPrescriptions, subscribeUnreadChatCount, subscribeUserAppointments } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 interface HomeScreenProps {
@@ -34,17 +34,19 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   useEffect(() => {
     const fetchData = async () => {
       if (!user?.uid) return;
-      const [apts, results, presc] = await Promise.all([
-        getUserAppointments(user.uid),
+      const [results, presc] = await Promise.all([
         getUserResults(user.uid),
         getUserPrescriptions(user.uid),
       ]);
-      setAppointmentsCount(apts.filter((a: any) => a.status === 'قادم').length);
       setResultsCount(results.length);
       setPrescriptionsCount(presc.length);
     };
     fetchData();
   }, [user?.uid]);
+
+  useEffect(() => subscribeUserAppointments(user?.uid, (apts) => {
+    setAppointmentsCount(apts.filter((a: any) => a.status === 'قادم').length);
+  }), [user?.uid]);
 
   useEffect(() => subscribeUnreadChatCount(user?.uid, setUnreadChats), [user?.uid]);
 
