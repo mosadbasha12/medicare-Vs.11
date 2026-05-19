@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { updateUserProfile } from '../utils/localDataService';
+import { requestDoctorProfileUpdate, updateUserProfile } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 import type { Currency } from '../types';
 
@@ -26,8 +26,15 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
   const [age, setAge] = useState(String(user?.age ?? 0));
   const [gender, setGender] = useState<'male' | 'female'>(user?.gender || 'male');
   const [currency, setCurrency] = useState<Currency>(user?.currency || 'EGP');
+  const [specialty, setSpecialty] = useState(user?.specialty || '');
+  const [medicalId, setMedicalId] = useState(user?.medicalId || '');
+  const [nationalId, setNationalId] = useState(user?.nationalId || '');
+  const [clinicLocation, setClinicLocation] = useState(user?.clinicLocation || '');
+  const [doctorVideoPrice, setDoctorVideoPrice] = useState(String(user?.doctorVideoPrice ?? 60));
+  const [doctorClinicPrice, setDoctorClinicPrice] = useState(String(user?.doctorClinicPrice ?? user?.doctorVideoPrice ?? 60));
   const [loading, setLoading] = useState(false);
   const showHealthFields = user?.role !== 'doctor';
+  const isDoctor = user?.role === 'doctor';
 
   const handleSave = async () => {
     if (!user) return;
@@ -47,19 +54,42 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
       return;
     }
 
+    const doctorVideo = Number(doctorVideoPrice.replace(',', '.'));
+    const doctorClinic = Number(doctorClinicPrice.replace(',', '.'));
+    if (isDoctor && (!Number.isFinite(doctorVideo) || doctorVideo < 0 || !Number.isFinite(doctorClinic) || doctorClinic < 0)) {
+      Alert.alert('تنبيه', 'اكتب أسعار صحيحة للاستشارة والعيادة');
+      return;
+    }
+
     const updates = {
       name: name.trim(),
       phone: phone.trim(),
       currency,
       ...(showHealthFields ? { weight: parsedWeight, bloodType, age: parsedAge, gender } : {}),
+      ...(isDoctor ? {
+        specialty: specialty.trim(),
+        medicalId: medicalId.trim(),
+        nationalId: nationalId.trim(),
+        clinicLocation: clinicLocation.trim(),
+        doctorVideoPrice: doctorVideo,
+        doctorClinicPrice: doctorClinic,
+      } : {}),
     };
 
     setLoading(true);
     try {
-      const success = await updateUserProfile(user.uid, updates);
+      const success = isDoctor
+        ? await requestDoctorProfileUpdate(user, updates)
+        : await updateUserProfile(user.uid, updates);
       if (success) {
-        setUser({ ...user, ...updates });
-        Alert.alert('نجاح', 'تم حفظ التغييرات بنجاح');
+        if (isDoctor) {
+          const pendingProfileUpdate = { updates, requestedAt: new Date().toISOString(), status: 'pending' as const };
+          setUser({ ...user, pendingProfileUpdate });
+          Alert.alert('تم إرسال الطلب', 'تم إرسال تعديل بيانات الطبيب للأدمن/الأونر للمراجعة. لن تتغير البيانات إلا بعد الموافقة.');
+        } else {
+          setUser({ ...user, ...updates });
+          Alert.alert('نجاح', 'تم حفظ التغييرات بنجاح');
+        }
         navigation.goBack();
       } else {
         Alert.alert('خطأ', 'فشل في حفظ التغييرات');
@@ -91,6 +121,13 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
           
           <Text style={styles.label}>{t('phone')}</Text>
           <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="05XXXXXXXX" placeholderTextColor={COLORS.textSecondary} keyboardType="phone-pad" editable={!loading} />
+
+          {isDoctor && user?.pendingProfileUpdate?.status === 'pending' && (
+            <View style={styles.pendingBox}>
+              <Ionicons name="time-outline" size={18} color={COLORS.accentWarm} />
+              <Text style={styles.pendingText}>عندك طلب تعديل قيد المراجعة. أي حفظ جديد سيستبدل الطلب السابق.</Text>
+            </View>
+          )}
 
           <Text style={styles.label}>عملة الحساب</Text>
           <View style={styles.currencyRow}>
@@ -138,6 +175,30 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
               </View>
             </>
           )}
+
+          {isDoctor && (
+            <>
+              <Text style={styles.label}>التخصص</Text>
+              <TextInput style={styles.input} value={specialty} onChangeText={setSpecialty} placeholder="مثال: قلب" placeholderTextColor={COLORS.textSecondary} editable={!loading} />
+
+              <Text style={styles.label}>رقم القيد الطبي</Text>
+              <TextInput style={styles.input} value={medicalId} onChangeText={setMedicalId} placeholder="رقم القيد" placeholderTextColor={COLORS.textSecondary} editable={!loading} />
+
+              <Text style={styles.label}>رقم الهوية الوطنية</Text>
+              <TextInput style={styles.input} value={nationalId} onChangeText={setNationalId} placeholder="رقم الهوية" placeholderTextColor={COLORS.textSecondary} editable={!loading} />
+
+              <Text style={styles.label}>موقع العيادة</Text>
+              <TextInput style={styles.input} value={clinicLocation} onChangeText={setClinicLocation} placeholder="عنوان العيادة" placeholderTextColor={COLORS.textSecondary} editable={!loading} />
+
+              <Text style={styles.label}>سعر الاستشارة</Text>
+              <TextInput style={styles.input} value={doctorVideoPrice} onChangeText={setDoctorVideoPrice} placeholder="60" placeholderTextColor={COLORS.textSecondary} keyboardType="numeric" editable={!loading} />
+
+              <Text style={styles.label}>سعر زيارة العيادة</Text>
+              <TextInput style={styles.input} value={doctorClinicPrice} onChangeText={setDoctorClinicPrice} placeholder="60" placeholderTextColor={COLORS.textSecondary} keyboardType="numeric" editable={!loading} />
+
+              <Text style={styles.approvalNote}>تعديلات الطبيب لا تطبق فوراً. سيتم إرسالها للأدمن/الأونر للموافقة أولاً.</Text>
+            </>
+          )}
         </GlassCard>
 
         <TouchableOpacity style={[styles.saveBtn, loading && { opacity: 0.7 }]} onPress={handleSave} disabled={loading}>
@@ -156,6 +217,9 @@ const styles = StyleSheet.create({
   card: { padding: 24, marginBottom: 32 },
   label: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 8, textAlign: 'right' },
   input: { backgroundColor: 'rgba(255,255,255,0.05)', color: COLORS.textPrimary, padding: 16, borderRadius: 12, marginBottom: 20, textAlign: 'right', borderWidth: 1, borderColor: COLORS.borderColor },
+  pendingBox: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8, backgroundColor: COLORS.accentWarm + '18', borderWidth: 1, borderColor: COLORS.accentWarm + '44', borderRadius: 12, padding: 12, marginBottom: 20 },
+  pendingText: { flex: 1, color: COLORS.accentWarm, fontSize: 12, textAlign: 'right', lineHeight: 18 },
+  approvalNote: { color: COLORS.accentWarm, fontSize: 12, textAlign: 'right', lineHeight: 18, marginBottom: 20 },
   currencyRow: { flexDirection: 'row-reverse', gap: 10, marginBottom: 20 },
   currencyOption: { flex: 1, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor },
   currencyOptionActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },

@@ -33,6 +33,11 @@ export interface AppUser {
   age?: number;
   gender?: UserGender;
   consultationsCount?: number;
+  pendingProfileUpdate?: {
+    updates: Partial<AppUser>;
+    requestedAt: string;
+    status: 'pending';
+  };
   createdAt: string;
 }
 

@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { addDoctorToCatalog, createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus, updateUserProfile } from '../utils/localDataService';
+import { createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
 import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
@@ -102,14 +102,19 @@ export default function DoctorDashboard({ navigation }: any) {
       showInfo('تنبيه', 'اكتب أسعار صحيحة للاستشارة والحجز.');
       return;
     }
-    const success = await updateUserProfile(user.uid, { doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic });
+    const success = await requestDoctorProfileUpdate(user, { doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic });
     if (success) {
-      const updatedUser = { ...user, doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic };
-      await addDoctorToCatalog(updatedUser);
-      setUser(updatedUser);
-      showInfo('تم', 'تم تحديث أسعارك بنجاح.');
+      setUser({
+        ...user,
+        pendingProfileUpdate: {
+          updates: { doctorVideoPrice: nextVideo, doctorClinicPrice: nextClinic },
+          requestedAt: new Date().toISOString(),
+          status: 'pending',
+        },
+      });
+      showInfo('تم إرسال الطلب', 'تم إرسال تعديل الأسعار للأدمن/الأونر. الأسعار لن تتغير إلا بعد الموافقة.');
     } else {
-      showInfo('خطأ', 'فشل تحديث الأسعار.');
+      showInfo('خطأ', 'فشل إرسال طلب تعديل الأسعار.');
     }
   };
 
@@ -147,7 +152,7 @@ export default function DoctorDashboard({ navigation }: any) {
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>لوحة تحكم الطبيب</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('DoctorSchedule')}>
+        <TouchableOpacity onPress={() => navigation.navigate('MainTabs', { screen: 'حسابي' })}>
           <Ionicons name="settings-outline" size={24} color={COLORS.primaryLight} />
         </TouchableOpacity>
       </View>
@@ -184,7 +189,10 @@ export default function DoctorDashboard({ navigation }: any) {
               <Text style={styles.docName}>{user?.name}</Text>
               <Text style={styles.docSpec}>{user?.specialty || 'طبيب عام'}</Text>
               <Text style={styles.docId}>رقم القيد: {user?.medicalId || 'غير محدد'}</Text>
-              <Text style={styles.feeNotice}>التطبيق يخصم {commissionRate}% من كل استشارة أو حجز، وصافي المبلغ يضاف لرصيدك.</Text>
+            <Text style={styles.feeNotice}>التطبيق يخصم {commissionRate}% من كل استشارة أو حجز، وصافي المبلغ يضاف لرصيدك.</Text>
+              {user?.pendingProfileUpdate?.status === 'pending' && (
+                <Text style={styles.pendingEditNotice}>لديك طلب تعديل بيانات قيد مراجعة الأدمن/الأونر.</Text>
+              )}
             </View>
           </View>
           <View style={styles.priceEditor}>
@@ -197,7 +205,7 @@ export default function DoctorDashboard({ navigation }: any) {
               <TextInput style={styles.priceInput} value={clinicPrice} onChangeText={setClinicPrice} keyboardType="numeric" placeholder="60" placeholderTextColor={COLORS.textMuted} />
             </View>
             <TouchableOpacity style={styles.savePriceBtn} onPress={handleSavePrices}>
-              <Text style={styles.savePriceText}>حفظ الأسعار</Text>
+              <Text style={styles.savePriceText}>إرسال طلب تعديل الأسعار</Text>
             </TouchableOpacity>
           </View>
         </GlassCard>
@@ -682,6 +690,7 @@ const styles = StyleSheet.create({
   docSpec: { color: COLORS.secondary, fontSize: 14, marginTop: 4, textAlign: 'right' },
   docId: { color: COLORS.textMuted, fontSize: 11, marginTop: 4, textAlign: 'right' },
   feeNotice: { color: COLORS.accentWarm, fontSize: 11, marginTop: 6, textAlign: 'right', lineHeight: 17 },
+  pendingEditNotice: { color: COLORS.accentWarm, fontSize: 11, marginTop: 6, textAlign: 'right', lineHeight: 17, fontWeight: 'bold' },
   priceEditor: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.borderColor, gap: 10 },
   priceInputGroup: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   priceLabel: { color: COLORS.textSecondary, fontSize: 12, flex: 1, textAlign: 'right' },

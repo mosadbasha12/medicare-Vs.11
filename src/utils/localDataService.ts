@@ -1846,6 +1846,79 @@ export const updateUserProfile = async (
   }
 };
 
+export const requestDoctorProfileUpdate = async (
+  currentUser: AppUser,
+  updates: Partial<AppUser>
+): Promise<boolean> => {
+  try {
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([, value]) => value !== undefined)
+    );
+    const request = {
+      updates: cleanUpdates,
+      requestedAt: new Date().toISOString(),
+      status: 'pending',
+    };
+
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', currentUser.uid), {
+        pendingProfileUpdate: request,
+      }, { merge: true });
+    }
+
+    await updateCachedUser(currentUser.uid, { pendingProfileUpdate: request });
+    return true;
+  } catch (error) {
+    console.error('requestDoctorProfileUpdate error:', error);
+    return false;
+  }
+};
+
+export const approveDoctorProfileUpdate = async (
+  uid: string,
+  actorRole?: string
+): Promise<boolean> => {
+  if (actorRole !== 'owner' && actorRole !== 'admin') return false;
+  try {
+    const users = await getAllUsers();
+    const target = users.find((item) => item.uid === uid);
+    const updates = target?.pendingProfileUpdate?.updates;
+    if (!updates) return false;
+
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', uid), {
+        ...updates,
+        pendingProfileUpdate: null,
+      }, { merge: true });
+    }
+
+    await updateCachedUser(uid, { ...updates, pendingProfileUpdate: undefined });
+    const refreshed = { ...target, ...updates, pendingProfileUpdate: undefined };
+    if (refreshed.role === 'doctor') await addDoctorToCatalog(refreshed);
+    return true;
+  } catch (error) {
+    console.error('approveDoctorProfileUpdate error:', error);
+    return false;
+  }
+};
+
+export const rejectDoctorProfileUpdate = async (
+  uid: string,
+  actorRole?: string
+): Promise<boolean> => {
+  if (actorRole !== 'owner' && actorRole !== 'admin') return false;
+  try {
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', uid), { pendingProfileUpdate: null }, { merge: true });
+    }
+    await updateCachedUser(uid, { pendingProfileUpdate: undefined });
+    return true;
+  } catch (error) {
+    console.error('rejectDoctorProfileUpdate error:', error);
+    return false;
+  }
+};
+
 export const updateUserWalletBalance = async (
   currentUser: AppUser,
   balance: number

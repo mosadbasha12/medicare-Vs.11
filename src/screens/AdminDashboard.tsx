@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Swi
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { APP_THEMES, COLORS, type ThemeId } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions, getPlatformSettings, updatePlatformSettings } from '../utils/localDataService';
+import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions, getPlatformSettings, updatePlatformSettings, approveDoctorProfileUpdate, rejectDoctorProfileUpdate } from '../utils/localDataService';
 import { clearSession, getAccountTypeLabel, getPermissionLabel, isOwnerEmail } from '../utils/storage';
 import { useUser } from '../context/UserContext';
 import type { AdminPermission } from '../types';
@@ -44,6 +44,7 @@ export default function AdminDashboard({ navigation }: any) {
   const canApproveDoctors = isOwner || adminPermissions.includes('approveDoctors');
   const canManageUsers = isOwner || adminPermissions.includes('manageUsers');
   const canManageDoctors = isOwner || adminPermissions.includes('manageDoctors');
+  const pendingProfileUpdates = users.filter((u) => u.role === 'doctor' && u.pendingProfileUpdate?.status === 'pending');
   const tabs = [
     { key: 'overview' as const, label: 'نظرة', visible: true },
     { key: 'users' as const, label: 'الحسابات', visible: canManageUsers },
@@ -206,6 +207,22 @@ export default function AdminDashboard({ navigation }: any) {
     });
   };
 
+  const handleApproveProfileUpdate = (target: any) => {
+    showConfirmation('اعتماد تعديل بيانات الطبيب', `هل تريد اعتماد التعديلات المطلوبة من "${target.name}"؟`, async () => {
+      const success = await approveDoctorProfileUpdate(target.uid, isOwner ? 'owner' : user?.role);
+      showInfo(success ? 'تم' : 'خطأ', success ? 'تم اعتماد التعديلات وتحديث بيانات الطبيب.' : 'فشل اعتماد التعديلات.');
+      fetchData();
+    });
+  };
+
+  const handleRejectProfileUpdate = (target: any) => {
+    showConfirmation('رفض تعديل بيانات الطبيب', `هل تريد رفض التعديلات المطلوبة من "${target.name}"؟`, async () => {
+      const success = await rejectDoctorProfileUpdate(target.uid, isOwner ? 'owner' : user?.role);
+      showInfo(success ? 'تم' : 'خطأ', success ? 'تم رفض التعديلات وحذف الطلب.' : 'فشل رفض التعديلات.');
+      fetchData();
+    });
+  };
+
   const getRoleLabel = (role: string) => {
     return getAccountTypeLabel(role);
   };
@@ -277,6 +294,16 @@ export default function AdminDashboard({ navigation }: any) {
                   <Text style={styles.pendingAlertText}>
                     يوجد {stats.pendingDoctors} طبيب{stats.pendingDoctors > 1 ? '' : ''} قيد المراجعة
                   </Text>
+                </View>
+                <Ionicons name="chevron-back" size={18} color={COLORS.accentWarm} />
+              </TouchableOpacity>
+            )}
+
+            {pendingProfileUpdates.length > 0 && (
+              <TouchableOpacity style={styles.pendingAlert} onPress={() => setActiveTab('pending')}>
+                <View style={styles.pendingAlertRow}>
+                  <Ionicons name="create-outline" size={22} color={COLORS.accentWarm} />
+                  <Text style={styles.pendingAlertText}>يوجد {pendingProfileUpdates.length} طلب تعديل بيانات طبيب</Text>
                 </View>
                 <Ionicons name="chevron-back" size={18} color={COLORS.accentWarm} />
               </TouchableOpacity>
@@ -488,7 +515,7 @@ export default function AdminDashboard({ navigation }: any) {
 
         {!loading && activeTab === 'pending' && canApproveDoctors && (
           <>
-            {pendingDoctors.length === 0 ? (
+            {pendingDoctors.length === 0 && pendingProfileUpdates.length === 0 ? (
               <GlassCard style={styles.noPendingCard}>
                 <Ionicons name="checkmark-circle" size={48} color={COLORS.accentWarm} />
                 <Text style={styles.noPendingTitle}>لا يوجد طلبات قيد الانتظار</Text>
@@ -536,6 +563,47 @@ export default function AdminDashboard({ navigation }: any) {
                   </View>
                 </GlassCard>
               ))
+            )}
+
+            {pendingProfileUpdates.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>طلبات تعديل بيانات الأطباء</Text>
+                {pendingProfileUpdates.map((d) => {
+                  const updates = d.pendingProfileUpdate?.updates || {};
+                  return (
+                    <GlassCard key={`profile_${d.uid}`} style={styles.pendingCard}>
+                      <View style={styles.pendingHeader}>
+                        <View style={styles.pendingAvatar}>
+                          <Text style={styles.pendingEmoji}>👨‍⚕️</Text>
+                        </View>
+                        <View style={styles.pendingInfo}>
+                          <Text style={styles.pendingName}>{d.name}</Text>
+                          <Text style={styles.pendingSpec}>{d.specialty || 'غير محدد'}</Text>
+                          <Text style={styles.pendingMedId}>تاريخ الطلب: {formatDate(d.pendingProfileUpdate?.requestedAt)}</Text>
+                        </View>
+                        <View style={[styles.statusBadge, { backgroundColor: COLORS.accentWarm + '22' }]}>
+                          <Text style={[styles.statusBadgeText, { color: COLORS.accentWarm }]}>تعديل بيانات</Text>
+                        </View>
+                      </View>
+                      <View style={styles.changeBox}>
+                        {Object.entries(updates).map(([key, value]) => (
+                          <Text key={key} style={styles.changeText}>{key}: {String(value)}</Text>
+                        ))}
+                      </View>
+                      <View style={styles.pendingActions}>
+                        <TouchableOpacity style={[styles.pendingBtn, styles.approveBtn]} onPress={() => handleApproveProfileUpdate(d)}>
+                          <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+                          <Text style={styles.pendingBtnText}>اعتماد التعديل</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.pendingBtn, styles.rejectBtn]} onPress={() => handleRejectProfileUpdate(d)}>
+                          <Ionicons name="close-circle" size={18} color="#FFF" />
+                          <Text style={styles.pendingBtnText}>رفض</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </GlassCard>
+                  );
+                })}
+              </>
             )}
           </>
         )}
@@ -658,6 +726,8 @@ const styles = StyleSheet.create({
   pendingDetails: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.bgCard, borderRadius: 8, padding: 10, marginBottom: 14, gap: 8 },
   pendingEmail: { color: COLORS.textSecondary, fontSize: 13 },
   pendingActions: { flexDirection: 'row-reverse', gap: 10 },
+  changeBox: { backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 10, padding: 10, marginBottom: 12 },
+  changeText: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginBottom: 4 },
   pendingBtn: { flex: 1, flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', paddingVertical: 12, borderRadius: 12, gap: 6 },
   approveBtn: { backgroundColor: COLORS.accentWarm },
   rejectBtn: { backgroundColor: COLORS.danger },
