@@ -3,6 +3,7 @@ import type { AdminPermission, Appointment, LabResult, Prescription, Doctor, Cha
 import { COLORS, type ThemeId } from '../theme';
 import {
   addDoc,
+  collectionGroup,
   collection,
   deleteDoc,
   doc,
@@ -51,10 +52,13 @@ export interface PrescriptionOrder {
 }
 
 export interface ChatSummary {
+  chatId?: string;
   doctorId: string;
   doctorName: string;
   doctorEmoji?: string;
   specialty?: string;
+  patientId?: string;
+  patientName?: string;
   lastMessage: string;
   lastMessageAt: string;
   messagesCount: number;
@@ -1029,10 +1033,81 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
 
     const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
     summaries.push({
+      chatId,
       doctorId: doctor.id,
       doctorName: doctor.name,
       doctorEmoji: doctor.emoji,
       specialty: doctor.specialty,
+      lastMessage: last.text || (last.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
+      lastMessageAt: last.createdAt,
+      messagesCount: messages.length,
+    });
+  }
+
+  return summaries.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+};
+
+const getChatMessages = async (chatId: string): Promise<ChatMessage[]> => {
+  let messages: ChatMessage[] = [];
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')));
+      messages = snap.docs.map((d) => normalizeChatMessage(d.id, chatId, d.data()));
+    } catch (error) {
+      console.error('Firebase getChatMessages error:', error);
+    }
+  }
+  if (messages.length === 0) {
+    const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
+    messages = stored ? JSON.parse(stored) : [];
+  }
+  return messages;
+};
+
+export const getDoctorChatSummaries = async (doctorId: string): Promise<ChatSummary[]> => {
+  const chatIds = new Set<string>();
+  const patientNames = new Map<string, string>();
+
+  try {
+    const [appointments, users] = await Promise.all([getDoctorAppointments(doctorId), getAllUsers()]);
+    for (const apt of appointments) {
+      if (!apt.patientId) continue;
+      const chatId = `${apt.patientId}_${doctorId}`;
+      chatIds.add(chatId);
+      const patient = users.find((item) => item.uid === apt.patientId);
+      patientNames.set(apt.patientId, apt.patientName || patient?.name || 'مريض');
+    }
+  } catch (error) {
+    console.error('Doctor chat appointment fallback error:', error);
+  }
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const inbound = await getDocs(query(collectionGroup(db, 'messages'), where('recipientId', '==', doctorId)));
+      inbound.docs.forEach((messageDoc) => {
+        const data = messageDoc.data() as any;
+        if (!data.chatId) return;
+        chatIds.add(data.chatId);
+        if (data.senderId && data.senderName) patientNames.set(data.senderId, data.senderName);
+      });
+    } catch (error) {
+      console.error('Firebase getDoctorChatSummaries inbound error:', error);
+    }
+  }
+
+  const summaries: ChatSummary[] = [];
+  for (const chatId of chatIds) {
+    const messages = await getChatMessages(chatId);
+    if (messages.length === 0) continue;
+    const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    const patientId = chatId.split('_').find((id) => id && id !== doctorId) || last.senderId;
+    const patientName = patientNames.get(patientId) || (last.senderId === patientId ? last.senderName : 'مريض');
+    summaries.push({
+      chatId,
+      doctorId,
+      doctorName: patientName,
+      patientId,
+      patientName,
       lastMessage: last.text || (last.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
       lastMessageAt: last.createdAt,
       messagesCount: messages.length,

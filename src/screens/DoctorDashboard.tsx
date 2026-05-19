@@ -136,6 +136,10 @@ export default function DoctorDashboard({ navigation }: any) {
             <Text style={styles.adminToolsText}>لوحة الأدمن</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity style={styles.adminToolsBtn} onPress={() => navigation.navigate('ChatList')}>
+          <Ionicons name="chatbubbles-outline" size={18} color={COLORS.primaryLight} />
+          <Text style={styles.adminToolsText}>محادثات المرضى</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
           <Text style={styles.signOutText}>خروج</Text>

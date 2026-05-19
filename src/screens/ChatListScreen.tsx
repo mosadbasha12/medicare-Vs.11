@@ -4,7 +4,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getAllDoctors, getUserChatSummaries, type ChatSummary } from '../utils/localDataService';
+import { getAllDoctors, getDoctorChatSummaries, getUserChatSummaries, type ChatSummary } from '../utils/localDataService';
 import type { Doctor } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -16,6 +16,12 @@ export default function ChatListScreen({ navigation }: any) {
 
   const fetchData = useCallback(async () => {
     if (!user?.uid) return;
+    if (user.role === 'doctor') {
+      const chatData = await getDoctorChatSummaries(user.uid);
+      setChats(chatData);
+      setDoctors([]);
+      return;
+    }
     const [chatData, doctorData] = await Promise.all([
       getUserChatSummaries(user.uid),
       getAllDoctors(),
@@ -33,11 +39,16 @@ export default function ChatListScreen({ navigation }: any) {
     return unsubscribe;
   }, [navigation, fetchData]);
 
-  const openChat = (doctorId: string, doctorName: string) => {
-    navigation.navigate('Chat', { doctorId, doctorName });
+  const openChat = (doctorId: string, doctorName: string, chat?: ChatSummary) => {
+    if (user?.role === 'doctor' && chat?.chatId && chat.patientId) {
+      navigation.navigate('Chat', { doctorId: user.uid, doctorName: chat.patientName || doctorName, recipientId: chat.patientId, chatId: chat.chatId });
+      return;
+    }
+    navigation.navigate('Chat', { doctorId, doctorName, recipientId: doctorId });
   };
 
   const newChatDoctors = doctors.filter((doctor) => !chats.some((chat) => chat.doctorId === doctor.id));
+  const isDoctorInbox = user?.role === 'doctor';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -45,16 +56,16 @@ export default function ChatListScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('chat')}</Text>
+        <Text style={styles.headerTitle}>{isDoctorInbox ? 'محادثات المرضى' : t('chat')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <FlatList
         data={[
           { type: 'section', id: 'previous', title: t('previousChats') },
-          ...(chats.length ? chats.map((item) => ({ type: 'chat', id: `chat_${item.doctorId}`, item })) : [{ type: 'emptyChats', id: 'emptyChats' }]),
-          { type: 'section', id: 'new', title: t('startNewChat') },
-          ...newChatDoctors.map((item) => ({ type: 'doctor', id: `doctor_${item.id}`, item })),
+          ...(chats.length ? chats.map((item) => ({ type: 'chat', id: `chat_${item.chatId || item.patientId || item.doctorId}`, item })) : [{ type: 'emptyChats', id: 'emptyChats' }]),
+          ...(isDoctorInbox ? [] : [{ type: 'section', id: 'new', title: t('startNewChat') }]),
+          ...(isDoctorInbox ? [] : newChatDoctors.map((item) => ({ type: 'doctor', id: `doctor_${item.id}`, item }))),
         ]}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
@@ -75,13 +86,13 @@ export default function ChatListScreen({ navigation }: any) {
           if (item.type === 'chat') {
             const chat = item.item as ChatSummary;
             return (
-              <TouchableOpacity onPress={() => openChat(chat.doctorId, chat.doctorName)}>
+              <TouchableOpacity onPress={() => openChat(chat.doctorId, chat.doctorName, chat)}>
                 <GlassCard style={styles.card}>
                   <View style={styles.avatarBox}>
-                    <Text style={styles.avatarEmoji}>{chat.doctorEmoji || '👨‍⚕️'}</Text>
+                    <Text style={styles.avatarEmoji}>{isDoctorInbox ? '🧑' : (chat.doctorEmoji || '👨‍⚕️')}</Text>
                   </View>
                   <View style={styles.infoBox}>
-                    <Text style={styles.name}>{chat.doctorName}</Text>
+                    <Text style={styles.name}>{isDoctorInbox ? (chat.patientName || chat.doctorName) : chat.doctorName}</Text>
                     <Text style={styles.subText} numberOfLines={1}>{chat.lastMessage}</Text>
                   </View>
                   <View style={styles.metaBox}>
