@@ -16,7 +16,7 @@ const showInfo = (title: string, message: string) => {
 export default function PaymentScreen({ navigation }: any) {
   const { user, setUser } = useUser();
   const { t } = useLanguage();
-  const [selectedMethod, setSelectedMethod] = useState<'card' | 'instapay' | 'paypal' | 'apple-pay'>('card');
+  const [selectedMethod, setSelectedMethod] = useState<'card' | 'instapay'>('card');
   const [cards, setCards] = useState(['**** **** **** 4242', '**** **** **** 8899']);
   const [selectedCard, setSelectedCard] = useState('**** **** **** 4242');
   const [amount, setAmount] = useState('500');
@@ -36,10 +36,6 @@ export default function PaymentScreen({ navigation }: any) {
 
   const handleTopUp = async () => {
     if (!user) return;
-    if (selectedMethod === 'paypal' || selectedMethod === 'apple-pay') {
-      showInfo('غير متاح حالياً', 'طريقة الدفع دي لسه مش مربوطة ببوابة دفع حقيقية. استخدم الكارت التجريبي أو Instapay.');
-      return;
-    }
     const parsedAmount = Number(amount.replace(',', '.'));
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       showInfo('تنبيه', 'اكتب مبلغ شحن صحيح.');
@@ -145,20 +141,7 @@ export default function PaymentScreen({ navigation }: any) {
              <Ionicons name={selectedMethod === 'instapay' ? 'checkmark-circle' : 'chevron-back'} size={18} color={selectedMethod === 'instapay' ? COLORS.secondary : COLORS.textSecondary} />
            </TouchableOpacity>
         </GlassCard>
-        <GlassCard style={styles.otherOption}>
-           <TouchableOpacity style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1 }} onPress={() => setSelectedMethod('paypal')}>
-             <FontAwesome5 name="paypal" size={20} color="#003087" />
-             <Text style={styles.optionLabel}>PayPal <Text style={styles.comingSoon}>قريباً</Text></Text>
-             <Ionicons name={selectedMethod === 'paypal' ? 'checkmark-circle' : 'chevron-back'} size={18} color={selectedMethod === 'paypal' ? COLORS.secondary : COLORS.textSecondary} />
-           </TouchableOpacity>
-        </GlassCard>
-        <GlassCard style={styles.otherOption}>
-           <TouchableOpacity style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1 }} onPress={() => setSelectedMethod('apple-pay')}>
-             <FontAwesome5 name="apple-pay" size={24} color="#FFF" />
-             <Text style={styles.optionLabel}>Apple Pay <Text style={styles.comingSoon}>قريباً</Text></Text>
-             <Ionicons name={selectedMethod === 'apple-pay' ? 'checkmark-circle' : 'chevron-back'} size={18} color={selectedMethod === 'apple-pay' ? COLORS.secondary : COLORS.textSecondary} />
-           </TouchableOpacity>
-        </GlassCard>
+        <Text style={styles.gatewayNote}>تم إخفاء طرق الدفع غير المربوطة ببوابة حقيقية حتى لا تظهر للمستخدم كاختيار فعّال.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -192,7 +175,7 @@ const styles = StyleSheet.create({
   addCardText: { color: COLORS.primaryLight, fontWeight: 'bold', marginRight: 8 },
   otherOption: { flexDirection: 'row-reverse', alignItems: 'center', padding: 16, marginBottom: 12 },
   optionLabel: { flex: 1, color: COLORS.textPrimary, fontSize: 16, marginRight: 16, textAlign: 'right' },
-  comingSoon: { color: COLORS.accentWarm, fontSize: 11, fontWeight: 'bold' },
+  gatewayNote: { color: COLORS.textMuted, fontSize: 11, lineHeight: 18, textAlign: 'right', marginTop: 4, marginBottom: 20 },
   instapayMark: { width: 28, height: 28, borderRadius: 8, backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center' },
   instapayText: { color: '#FFF', fontWeight: '900', fontSize: 11 },
 });

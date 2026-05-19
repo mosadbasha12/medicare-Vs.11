@@ -595,6 +595,11 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
 };
 
 export const getDoctorSchedule = async (doctorId: string): Promise<DoctorSchedule[]> => {
+  if (FIREBASE_ENABLED) {
+    const data = await getUserDocData(doctorId);
+    if (Array.isArray(data?.doctorSchedule)) return data.doctorSchedule;
+  }
+
   const stored = await AsyncStorage.getItem(`@doctor_schedule_${doctorId}`);
   if (stored) return JSON.parse(stored);
   const defaultSchedule: DoctorSchedule[] = [
@@ -612,6 +617,9 @@ export const getDoctorSchedule = async (doctorId: string): Promise<DoctorSchedul
 
 export const saveDoctorSchedule = async (doctorId: string, schedule: DoctorSchedule[]): Promise<boolean> => {
   try {
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', doctorId), { doctorSchedule: schedule }, { merge: true });
+    }
     await AsyncStorage.setItem(`@doctor_schedule_${doctorId}`, JSON.stringify(schedule));
     return true;
   } catch {
@@ -877,6 +885,13 @@ export const getDoctorStats = async (doctorId: string): Promise<{ totalPatients:
 };
 
 export const getUserResults = async (userId: string): Promise<LabResult[]> => {
+  if (FIREBASE_ENABLED) {
+    const data = await getUserDocData(userId);
+    if (Array.isArray(data?.labResults)) {
+      return data.labResults.sort((a: LabResult, b: LabResult) => String(b.id).localeCompare(String(a.id)));
+    }
+  }
+
   const stored = await AsyncStorage.getItem(`@results_${userId}`);
   if (!stored) return [];
 
@@ -896,6 +911,9 @@ export const createUserResult = async (result: Omit<LabResult, 'id'>): Promise<L
     const newResult: LabResult = { ...result, id: `result_${Date.now()}` };
     const existing = await getUserResults(result.userId);
     existing.unshift(newResult);
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', result.userId), { labResults: existing }, { merge: true });
+    }
     await AsyncStorage.setItem(`@results_${result.userId}`, JSON.stringify(existing));
     return newResult;
   } catch {
@@ -904,6 +922,13 @@ export const createUserResult = async (result: Omit<LabResult, 'id'>): Promise<L
 };
 
 export const getUserPrescriptions = async (userId: string): Promise<Prescription[]> => {
+  if (FIREBASE_ENABLED) {
+    const data = await getUserDocData(userId);
+    if (Array.isArray(data?.prescriptions)) {
+      return data.prescriptions.sort((a: Prescription, b: Prescription) => String(b.id).localeCompare(String(a.id)));
+    }
+  }
+
   const stored = await AsyncStorage.getItem(`@prescriptions_${userId}`);
   if (!stored) return [];
 
@@ -924,6 +949,9 @@ export const createPrescription = async (prescription: Omit<Prescription, 'id'>)
     const userId = prescription.userId;
     const existing = await getUserPrescriptions(userId);
     existing.push(newPrescription);
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', userId), { prescriptions: existing }, { merge: true });
+    }
     await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(existing));
     return newPrescription;
   } catch {
@@ -944,6 +972,9 @@ export const markPrescriptionDoseTaken = async (userId: string, prescriptionId: 
       takenDoses: totalDoses > 0 ? Math.min(totalDoses, takenDoses + 1) : takenDoses + 1,
       lastTakenAt: new Date().toISOString(),
     };
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', userId), { prescriptions }, { merge: true });
+    }
     await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(prescriptions));
     return prescriptions[idx];
   } catch {
@@ -966,6 +997,11 @@ export const getDoctorPrescriptions = async (doctorId: string, doctorName: strin
 };
 
 export const getPrescriptionOrders = async (userId: string): Promise<PrescriptionOrder[]> => {
+  if (FIREBASE_ENABLED) {
+    const data = await getUserDocData(userId);
+    if (Array.isArray(data?.prescriptionOrders)) return data.prescriptionOrders;
+  }
+
   const stored = await AsyncStorage.getItem(`@prescription_orders_${userId}`);
   return stored ? JSON.parse(stored) : [];
 };
@@ -977,6 +1013,9 @@ export const orderPrescription = async (userId: string, prescription: Prescripti
     if (existingOrder) {
       existingOrder.status = 'جاري التوصيل';
       existingOrder.orderedAt = new Date().toLocaleDateString('ar-EG');
+      if (FIREBASE_ENABLED) {
+        await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
+      }
       await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
       return true;
     }
@@ -988,6 +1027,9 @@ export const orderPrescription = async (userId: string, prescription: Prescripti
       dosage: prescription.dosage,
     };
     orders.push(newOrder);
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
+    }
     await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
     return true;
   } catch {
@@ -1003,6 +1045,9 @@ export const updatePrescriptionOrderStatus = async (userId: string, prescription
     orders[idx].status = status;
     if (status === 'تم التوصيل') {
       orders[idx].orderedAt += ' (تم التوصيل)';
+    }
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
     }
     await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
     return true;

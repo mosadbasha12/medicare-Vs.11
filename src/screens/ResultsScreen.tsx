@@ -53,6 +53,10 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) return;
+      if (file.size > 700 * 1024) {
+        showMessage(t('warning'), 'حجم الملف كبير. ارفع ملف أقل من 700KB حتى يتم حفظه ومشاركته مع الطبيب بدون فشل.');
+        return;
+      }
 
       const reader = new FileReader();
       reader.onload = async () => {
