@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { Alert, View, Text, StyleSheet, SafeAreaView, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Linking, Platform } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
@@ -35,8 +35,71 @@ export default function ChatScreen(props: any) {
       text: input.trim(),
       createdAt: new Date().toISOString(),
     };
-    await sendMessage(msg);
-    setInput('');
+    const success = await sendMessage(msg);
+    if (success) setInput('');
+    else Alert.alert('خطأ', 'تعذر إرسال الرسالة على السيرفر. راجع صلاحيات Firebase للشات.');
+  };
+
+  const sendAttachment = async (file: File) => {
+    if (!user || !hasDoctor) return;
+    if (file.size > 700 * 1024) {
+      Alert.alert('تنبيه', 'حجم المرفق كبير. اختر ملف أقل من 700KB مؤقتاً.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const fileData = String(reader.result || '');
+      if (!fileData) {
+        Alert.alert('خطأ', 'تعذر قراءة الملف.');
+        return;
+      }
+
+      const success = await sendMessage({
+        chatId,
+        senderId: user.uid,
+        senderName: user.name,
+        text: input.trim() || `مرفق: ${file.name}`,
+        createdAt: new Date().toISOString(),
+        attachmentName: file.name,
+        attachmentData: fileData,
+        attachmentType: file.type,
+      });
+      if (success) setInput('');
+      else Alert.alert('خطأ', 'تعذر إرسال المرفق.');
+    };
+    reader.onerror = () => Alert.alert('خطأ', 'تعذر قراءة الملف.');
+    reader.readAsDataURL(file);
+  };
+
+  const pickAttachment = () => {
+    if (!hasDoctor) return;
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      Alert.alert('تنبيه', 'إرسال المرفقات متاح حالياً من نسخة الويب.');
+      return;
+    }
+
+    const inputEl = document.createElement('input');
+    inputEl.type = 'file';
+    inputEl.accept = 'image/*,application/pdf,.doc,.docx,.txt';
+    inputEl.onchange = () => {
+      const file = inputEl.files?.[0];
+      if (file) sendAttachment(file);
+    };
+    inputEl.click();
+  };
+
+  const openAttachment = (item: any) => {
+    if (!item.attachmentData) return;
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const link = document.createElement('a');
+      link.href = item.attachmentData;
+      link.download = item.attachmentName || 'attachment';
+      link.target = '_blank';
+      link.click();
+      return;
+    }
+    Linking.openURL(item.attachmentData);
   };
 
   return (
@@ -72,9 +135,19 @@ export default function ChatScreen(props: any) {
         renderItem={({ item }) => (
           <View style={[styles.messageRow, item.senderId === user?.uid ? styles.userRow : styles.doctorRow]}>
             <View style={[styles.bubble, item.senderId === user?.uid ? styles.userBubble : styles.doctorBubble]}>
-              <Text style={[styles.messageText, item.senderId === user?.uid ? styles.userText : styles.doctorText]}>
-                {item.text}
-              </Text>
+              {!!item.text && (
+                <Text style={[styles.messageText, item.senderId === user?.uid ? styles.userText : styles.doctorText]}>
+                  {item.text}
+                </Text>
+              )}
+              {!!item.attachmentData && (
+                <TouchableOpacity style={styles.attachmentChip} onPress={() => openAttachment(item)}>
+                  <Ionicons name="document-attach-outline" size={16} color={item.senderId === user?.uid ? '#FFF' : COLORS.primaryLight} />
+                  <Text style={[styles.attachmentText, item.senderId === user?.uid ? styles.userText : styles.doctorText]} numberOfLines={1}>
+                    {item.attachmentName || 'مرفق'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -93,7 +166,7 @@ export default function ChatScreen(props: any) {
             onChangeText={setInput}
             editable={hasDoctor}
           />
-          <TouchableOpacity style={styles.attachBtn}>
+          <TouchableOpacity style={styles.attachBtn} onPress={pickAttachment} disabled={!hasDoctor}>
             <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </GlassCard>
@@ -120,6 +193,8 @@ const styles = StyleSheet.create({
   messageText: { fontSize: 15, textAlign: 'right' },
   userText: { color: '#FFF' },
   doctorText: { color: COLORS.textPrimary },
+  attachmentChip: { marginTop: 8, minHeight: 34, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.12)' },
+  attachmentText: { flex: 1, fontSize: 13, fontWeight: 'bold', textAlign: 'right' },
   emptyState: { flex: 1, minHeight: 420, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   emptyTitle: { color: COLORS.textPrimary, fontSize: 22, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
   emptyText: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 18, textAlign: 'center' },

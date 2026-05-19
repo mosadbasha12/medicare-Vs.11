@@ -10,7 +10,9 @@ import {
   getDocs,
   increment,
   onSnapshot,
+  orderBy,
   query,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -56,6 +58,18 @@ export interface ChatSummary {
   lastMessage: string;
   lastMessageAt: string;
   messagesCount: number;
+}
+
+export interface ChatMessageInput {
+  chatId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: string;
+  recipientId?: string;
+  attachmentName?: string;
+  attachmentData?: string;
+  attachmentType?: string;
 }
 
 export interface PlatformSettings {
@@ -861,6 +875,16 @@ export const getUserTransactions = async (userId: string): Promise<Transaction[]
 };
 
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc')));
+      const firebaseNotifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (firebaseNotifications.length > 0) return firebaseNotifications;
+    } catch (error) {
+      console.error('Firebase getUserNotifications error:', error);
+    }
+  }
+
   const stored = await AsyncStorage.getItem(`@notifications_${userId}`);
   if (stored) return JSON.parse(stored);
   const defaults = [
@@ -872,13 +896,106 @@ export const getUserNotifications = async (userId: string): Promise<any[]> => {
   return defaults;
 };
 
-export const sendMessage = async (message: any): Promise<boolean> => {
+const getRecipientIdFromChat = (chatId: string, senderId: string, explicitRecipientId?: string): string | undefined => {
+  if (explicitRecipientId && explicitRecipientId !== senderId) return explicitRecipientId;
+  const participants = chatId.split('_').filter(Boolean);
+  return participants.find((id) => id !== senderId);
+};
+
+const addLocalNotification = async (userId: string, notification: any): Promise<void> => {
+  const stored = await AsyncStorage.getItem(`@notifications_${userId}`);
+  const notifications = stored ? JSON.parse(stored) : [];
+  notifications.unshift(notification);
+  await AsyncStorage.setItem(`@notifications_${userId}`, JSON.stringify(notifications));
+};
+
+const createChatNotification = async (message: ChatMessageInput): Promise<void> => {
+  const recipientId = getRecipientIdFromChat(message.chatId, message.senderId, message.recipientId);
+  if (!recipientId) return;
+
+  const notification = {
+    userId: recipientId,
+    title: `رسالة جديدة من ${message.senderName || 'مستخدم'}`,
+    desc: message.text || (message.attachmentName ? `تم إرسال مرفق: ${message.attachmentName}` : 'تم إرسال رسالة جديدة'),
+    time: new Date().toLocaleString('ar-EG'),
+    icon: message.attachmentName ? 'paperclip' : 'comments',
+    color: COLORS.primaryLight,
+    read: false,
+    createdAt: message.createdAt,
+    chatId: message.chatId,
+    senderId: message.senderId,
+  };
+
+  if (FIREBASE_ENABLED) {
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        ...notification,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Firebase chat notification error:', error);
+    }
+  }
+
+  await addLocalNotification(recipientId, {
+    ...notification,
+    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  });
+};
+
+const normalizeChatMessage = (id: string, chatId: string, data: any): ChatMessage => ({
+  id,
+  chatId,
+  senderId: data.senderId,
+  senderName: data.senderName,
+  text: data.text || '',
+  createdAt: data.createdAt?.toDate?.().toISOString?.() || data.createdAt || new Date().toISOString(),
+  recipientId: data.recipientId,
+  attachmentName: data.attachmentName,
+  attachmentData: data.attachmentData,
+  attachmentType: data.attachmentType,
+});
+
+export const sendMessage = async (message: ChatMessageInput): Promise<boolean> => {
   const chatId = message.chatId;
-  const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
-  const msgs = stored ? JSON.parse(stored) : [];
-  msgs.push({ ...message, id: `msg_${Date.now()}` });
-  await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
-  return true;
+  const recipientId = getRecipientIdFromChat(chatId, message.senderId, message.recipientId);
+  const localMessage = {
+    ...message,
+    recipientId,
+    id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+  };
+
+  try {
+    if (FIREBASE_ENABLED) {
+      const { id, ...payload } = localMessage;
+      const docRef = await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        ...payload,
+        createdAt: serverTimestamp(),
+      });
+      localMessage.id = docRef.id;
+    }
+
+    const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
+    const msgs = stored ? JSON.parse(stored) : [];
+    if (!msgs.some((item: ChatMessage) => item.id === localMessage.id)) {
+      msgs.push(localMessage);
+      await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
+    }
+    await createChatNotification(localMessage);
+    return true;
+  } catch (error) {
+    console.error('sendMessage error:', error);
+    try {
+      const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
+      const msgs = stored ? JSON.parse(stored) : [];
+      msgs.push(localMessage);
+      await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
+      await createChatNotification(localMessage);
+      return !FIREBASE_ENABLED;
+    } catch {
+      return false;
+    }
+  }
 };
 
 export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[]> => {
@@ -887,10 +1004,19 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
 
   for (const doctor of doctors) {
     const chatId = `${userId}_${doctor.id}`;
-    const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
-    if (!stored) continue;
-
-    const messages: ChatMessage[] = JSON.parse(stored);
+    let messages: ChatMessage[] = [];
+    if (FIREBASE_ENABLED) {
+      try {
+        const snap = await getDocs(query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')));
+        messages = snap.docs.map((d) => normalizeChatMessage(d.id, chatId, d.data()));
+      } catch (error) {
+        console.error('Firebase getUserChatSummaries error:', error);
+      }
+    }
+    if (messages.length === 0) {
+      const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
+      messages = stored ? JSON.parse(stored) : [];
+    }
     if (messages.length === 0) continue;
 
     const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -899,7 +1025,7 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
       doctorName: doctor.name,
       doctorEmoji: doctor.emoji,
       specialty: doctor.specialty,
-      lastMessage: last.text,
+      lastMessage: last.text || (last.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
       lastMessageAt: last.createdAt,
       messagesCount: messages.length,
     });
@@ -912,14 +1038,43 @@ export const listenToMessages = (
   chatId: string,
   callback: (messages: any[]) => void
 ): (() => void) => {
+  let disposed = false;
+
   const fetchMessages = async () => {
     const stored = await AsyncStorage.getItem(`@chat_${chatId}`);
     const msgs = stored ? JSON.parse(stored) : [];
-    callback(msgs);
+    if (!disposed) callback(msgs);
   };
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc'));
+      const unsubscribe = onSnapshot(
+        q,
+        async (snap) => {
+          const msgs = snap.docs.map((d) => normalizeChatMessage(d.id, chatId, d.data()));
+          await AsyncStorage.setItem(`@chat_${chatId}`, JSON.stringify(msgs));
+          if (!disposed) callback(msgs);
+        },
+        () => {
+          fetchMessages();
+        }
+      );
+      return () => {
+        disposed = true;
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('Firebase listenToMessages error:', error);
+    }
+  }
+
   fetchMessages();
   const interval = setInterval(fetchMessages, 2000);
-  return () => clearInterval(interval);
+  return () => {
+    disposed = true;
+    clearInterval(interval);
+  };
 };
 
 export const toggleUserActive = async (uid: string, isActive: boolean): Promise<boolean> => {

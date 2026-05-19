@@ -84,6 +84,10 @@ export interface ChatMessage {
   senderName: string;
   text: string;
   createdAt: string;
+  recipientId?: string;
+  attachmentName?: string;
+  attachmentData?: string;
+  attachmentType?: string;
 }
 
 export interface Transaction {
