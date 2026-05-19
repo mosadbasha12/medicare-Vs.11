@@ -62,6 +62,10 @@ export interface Doctor {
   emoji?: string;
   available: boolean;
   bio?: string;
+  phone?: string;
+  clinicLocation?: string;
+  medicalId?: string;
+  patientsCount?: number;
   price: number;
   clinicPrice?: number;
   currency?: Currency;
@@ -170,6 +174,7 @@ export type RootStackParamList = {
   MainTabs: undefined;
   ChatList: undefined;
   Chat: { doctorId?: string; doctorName: string; chatId?: string; recipientId?: string };
+  DoctorProfile: { doctorId: string };
   Payment: undefined;
   EditProfile: undefined;
   Language: undefined;

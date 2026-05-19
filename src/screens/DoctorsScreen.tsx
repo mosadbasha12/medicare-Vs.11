@@ -9,7 +9,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 interface DoctorsScreenProps {
   navigation: {
-    navigate: (screen: string, params?: { doctorId?: string; doctorName: string; doctorSpec?: string; doctorPrice?: number; doctorClinicPrice?: number; currency?: string }) => void;
+    navigate: (screen: string, params?: any) => void;
     addListener: (event: string, callback: () => void) => () => void;
   };
 }
@@ -71,36 +71,39 @@ export default function DoctorsScreen({ navigation }: DoctorsScreenProps) {
           <Text style={styles.emptyText}>{t('noDoctors')}</Text>
         }
         renderItem={({ item }) => (
-          <GlassCard style={styles.card}>
-            <View style={styles.cardRow}>
-              <View style={styles.avatarBox}>
-                <Text style={styles.avatarEmoji}>{item.emoji || '👨‍⚕️'}</Text>
-              </View>
-              <View style={styles.infoBox}>
-                <Text style={styles.doctorName}>{item.name}</Text>
-                <Text style={styles.doctorSpec}>{item.specialty}</Text>
-                <View style={styles.ratingRow}>
-                  <FontAwesome5 name="star" size={12} color={COLORS.accentWarm} solid />
-                  <Text style={styles.ratingText}>{item.rating}</Text>
-                  <Text style={styles.priceText}> • {item.price} {item.currency === 'USD' ? '$' : 'ج.م'}</Text>
+          <TouchableOpacity activeOpacity={0.86} onPress={() => navigation.navigate('DoctorProfile', { doctorId: item.id })}>
+            <GlassCard style={styles.card}>
+              <View style={styles.cardRow}>
+                <View style={styles.avatarBox}>
+                  <Text style={styles.avatarEmoji}>{item.emoji || '👨‍⚕️'}</Text>
+                </View>
+                <View style={styles.infoBox}>
+                  <Text style={styles.doctorName}>{item.name}</Text>
+                  <Text style={styles.doctorSpec}>{item.specialty}</Text>
+                  <View style={styles.ratingRow}>
+                    <FontAwesome5 name="star" size={12} color={COLORS.accentWarm} solid />
+                    <Text style={styles.ratingText}>{item.rating}</Text>
+                    <Text style={styles.priceText}> • {item.price} {item.currency === 'USD' ? '$' : 'ج.م'}</Text>
+                  </View>
+                  <Text style={styles.profileHint}>اضغط لعرض بروفايل الطبيب والتقييمات</Text>
+                </View>
+                <View style={styles.actions}>
+                  <TouchableOpacity
+                    style={styles.chatIconBtn}
+                    onPress={() => navigation.navigate('Chat', { doctorName: item.name, doctorId: item.id, recipientId: item.id })}
+                  >
+                    <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.primaryLight} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                      style={styles.bookButton}
+                      onPress={() => navigation.navigate('Booking', { doctorId: item.id, doctorName: item.name, doctorSpec: item.specialty, doctorPrice: item.price, doctorClinicPrice: item.clinicPrice ?? item.price, currency: item.currency })}
+                  >
+                    <Text style={styles.bookButtonText}>{t('book')}</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <View style={styles.actions}>
-                <TouchableOpacity 
-                  style={styles.chatIconBtn} 
-                  onPress={() => navigation.navigate('Chat', { doctorName: item.name, doctorId: item.id })}
-                >
-                  <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.primaryLight} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                    style={styles.bookButton}
-                    onPress={() => navigation.navigate('Booking', { doctorId: item.id, doctorName: item.name, doctorSpec: item.specialty, doctorPrice: item.price, doctorClinicPrice: item.clinicPrice ?? item.price, currency: item.currency })}
-                >
-                  <Text style={styles.bookButtonText}>{t('book')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </GlassCard>
+            </GlassCard>
+          </TouchableOpacity>
         )}
       />
     </SafeAreaView>
@@ -125,6 +128,7 @@ const styles = StyleSheet.create({
   ratingRow: { flexDirection: 'row-reverse', alignItems: 'center', marginTop: 8 },
   ratingText: { color: COLORS.textSecondary, fontSize: 12, marginRight: 6 },
   priceText: { color: COLORS.accentWarm, fontSize: 12, marginRight: 4, fontWeight: 'bold' },
+  profileHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 6, textAlign: 'right' },
   actions: { alignItems: 'center' },
   chatIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primarySofter, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   bookButton: { backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 12 },
