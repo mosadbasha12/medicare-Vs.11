@@ -6,7 +6,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 
 type EmergencyNumber = { icon: string; label: string; number: string; color: string };
-type Coordinates = { latitude: number; longitude: number };
+type Coordinates = { latitude: number; longitude: number; accuracy?: number | null };
 type Hospital = { id: string; name: string; address: string; phone?: string; latitude?: number; longitude?: number; distanceKm?: number };
 type EmergencyRegion = {
   id: string;
@@ -138,7 +138,9 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://z.overpass-api.de/api/interpreter',
 ];
-const LOCATION_TIMEOUT_MS = Platform.OS === 'web' ? 9000 : 14000;
+const LOCATION_TIMEOUT_MS = Platform.OS === 'web' ? 20000 : 18000;
+const PRECISE_LOCATION_THRESHOLD_METERS = 100;
+const ROUGH_LOCATION_THRESHOLD_METERS = 1000;
 
 const buildNearbyHospitalsQuery = (coords: Coordinates, radiusMeters: number) => `
   [out:json][timeout:18];
@@ -235,35 +237,84 @@ const getBrowserCoords = async (): Promise<Coordinates | null> => {
 
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
-      (position) => resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude }),
+      (position) => resolve({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      }),
       () => resolve(null),
-      { enableHighAccuracy: false, timeout: LOCATION_TIMEOUT_MS, maximumAge: 10 * 60 * 1000 }
+      { enableHighAccuracy: true, timeout: LOCATION_TIMEOUT_MS, maximumAge: 0 }
     );
   });
 };
 
 const getDeviceCoords = async (): Promise<Coordinates | null> => {
-  const accuracyLevels = Platform.OS === 'web'
-    ? [Location.Accuracy.Balanced, Location.Accuracy.Lowest]
-    : [Location.Accuracy.High, Location.Accuracy.Balanced, Location.Accuracy.Low];
+  const candidateResults = await Promise.allSettled([
+    getBrowserCoords(),
+    withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest }), LOCATION_TIMEOUT_MS).then((position) => ({
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    })),
+    withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }), LOCATION_TIMEOUT_MS).then((position) => ({
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      accuracy: position.coords.accuracy,
+    })),
+  ]);
+  const candidates = candidateResults
+    .filter((result): result is PromiseFulfilledResult<Coordinates | null> => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((item): item is Coordinates => Boolean(item));
 
-  for (const accuracy of accuracyLevels) {
+  if (Platform.OS !== 'web' && candidates.length === 0) {
     try {
-      const position = await withTimeout(Location.getCurrentPositionAsync({ accuracy }), LOCATION_TIMEOUT_MS);
-      return { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      const position = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }), LOCATION_TIMEOUT_MS);
+      candidates.push({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      });
     } catch {
-      // Try the next, less strict accuracy level before falling back.
+      // If balanced accuracy is unavailable too, use only a fresh last-known reading below.
     }
   }
 
-  try {
-    const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 10 * 60 * 1000 });
-    if (lastKnown) return { latitude: lastKnown.coords.latitude, longitude: lastKnown.coords.longitude };
-  } catch {
-    // Browser geolocation below gives web one more chance.
+  const preciseCandidate = candidates.find((item) => typeof item.accuracy === 'number' && item.accuracy <= PRECISE_LOCATION_THRESHOLD_METERS);
+  if (preciseCandidate) return preciseCandidate;
+  if (candidates.length > 0) {
+    return [...candidates].sort((a, b) => (a.accuracy ?? Number.MAX_SAFE_INTEGER) - (b.accuracy ?? Number.MAX_SAFE_INTEGER))[0];
   }
 
-  return getBrowserCoords();
+  try {
+    const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 60 * 1000, requiredAccuracy: ROUGH_LOCATION_THRESHOLD_METERS });
+    if (lastKnown) return {
+      latitude: lastKnown.coords.latitude,
+      longitude: lastKnown.coords.longitude,
+      accuracy: lastKnown.coords.accuracy,
+    };
+  } catch {
+    // If there is no fresh location, the caller will show emergency fallbacks.
+  }
+
+  return null;
+};
+
+const formatAccuracy = (accuracy?: number | null) => {
+  if (typeof accuracy !== 'number') return '';
+  return accuracy >= 1000 ? `${(accuracy / 1000).toFixed(1)} كم` : `${Math.round(accuracy)} متر`;
+};
+
+const isPreciseLocation = (nextCoords: Coordinates | null) =>
+  Boolean(nextCoords && typeof nextCoords.accuracy === 'number' && nextCoords.accuracy <= PRECISE_LOCATION_THRESHOLD_METERS);
+
+const getLocationQualityText = (nextCoords: Coordinates | null) => {
+  if (!nextCoords) return '';
+  const accuracyText = formatAccuracy(nextCoords.accuracy);
+  if (!accuracyText) return 'تم تحديد موقعك، لكن المتصفح لم يرسل نسبة الدقة.';
+  if (isPreciseLocation(nextCoords)) return `موقع دقيق بدقة حوالي ${accuracyText}.`;
+  if ((nextCoords.accuracy ?? 0) <= ROUGH_LOCATION_THRESHOLD_METERS) return `الموقع تقريبي بدقة حوالي ${accuracyText}. اضغط تحديث الموقع في مكان مفتوح لتحسين الدقة.`;
+  return `تحذير: الموقع غير دقيق بدقة حوالي ${accuracyText}. فعّل GPS/Precise Location ثم اضغط تحديث الموقع.`;
 };
 
 export default function EmergencyScreen({ navigation }: any) {
@@ -296,18 +347,19 @@ export default function EmergencyScreen({ navigation }: any) {
 
   const loadNearbyHospitals = useCallback(async (nextCoords: Coordinates, nextRegion: EmergencyRegion) => {
     setLoadingHospitals(true);
+    const qualityText = getLocationQualityText(nextCoords);
     try {
       const nearby = await fetchNearbyHospitals(nextCoords);
       if (nearby.length > 0) {
         setHospitals(nearby);
-        setLocationStatus(`تم العثور على أقرب ${nearby.length} مستشفيات حسب موقعك الحالي حتى لو كانت بعيدة.`);
+        setLocationStatus(`${qualityText} تم العثور على أقرب ${nearby.length} مستشفيات حسب موقعك الحالي.`);
       } else {
         setHospitals(addDistanceToFallbacks(nextRegion.fallbackHospitals, nextCoords));
-        setLocationStatus('لم نجد نتائج كافية من الخريطة، يتم عرض بدائل طوارئ قابلة للفتح على Google Maps.');
+        setLocationStatus(`${qualityText} لم نجد نتائج كافية من الخريطة، يتم عرض بدائل طوارئ قابلة للفتح على Google Maps.`);
       }
     } catch {
       setHospitals(addDistanceToFallbacks(nextRegion.fallbackHospitals, nextCoords));
-      setLocationStatus('تعذر تحميل المستشفيات من الخريطة الآن، يتم عرض بدائل طوارئ قابلة للفتح على Google Maps.');
+      setLocationStatus(`${qualityText} تعذر تحميل المستشفيات من الخريطة الآن، يتم عرض بدائل طوارئ قابلة للفتح على Google Maps.`);
     } finally {
       setLoadingHospitals(false);
     }
@@ -315,7 +367,7 @@ export default function EmergencyScreen({ navigation }: any) {
 
   const detectLocation = useCallback(async () => {
     setLoadingLocation(true);
-    setLocationStatus('جاري تحديد موقعك...');
+    setLocationStatus('جاري تحديد موقعك بدقة عالية...');
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== 'granted') {
@@ -326,7 +378,7 @@ export default function EmergencyScreen({ navigation }: any) {
 
       const nextCoords = await getDeviceCoords();
       if (!nextCoords) {
-        setLocationStatus('تعذر قراءة موقعك من المتصفح الآن. يتم عرض بدائل الطوارئ، ويمكنك الضغط على تحديث الموقع بعد تفعيل GPS.');
+        setLocationStatus('تعذر قراءة موقع دقيق من المتصفح الآن. فعّل GPS/Precise Location ثم اضغط تحديث الموقع.');
         setHospitals(addDistanceToFallbacks(region.fallbackHospitals, null));
         return;
       }
@@ -361,8 +413,8 @@ export default function EmergencyScreen({ navigation }: any) {
           <Text style={styles.headerSubtitle}>{region.label}</Text>
         </View>
         <View style={styles.statusPill}>
-          <Ionicons name={coords ? 'location' : 'location-outline'} size={14} color={coords ? COLORS.accentWarm : COLORS.textSecondary} />
-          <Text style={[styles.statusPillText, coords && { color: COLORS.accentWarm }]}>{coords ? 'موقع دقيق' : 'بانتظار الموقع'}</Text>
+          <Ionicons name={coords ? 'location' : 'location-outline'} size={14} color={isPreciseLocation(coords) ? COLORS.accentWarm : COLORS.textSecondary} />
+          <Text style={[styles.statusPillText, coords && { color: isPreciseLocation(coords) ? COLORS.accentWarm : COLORS.textSecondary }]}>{coords ? (isPreciseLocation(coords) ? 'موقع دقيق' : 'موقع تقريبي') : 'بانتظار الموقع'}</Text>
         </View>
       </View>
 
