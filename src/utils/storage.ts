@@ -235,6 +235,7 @@ export const saveUserToDB = async (user: Omit<AppUser, 'uid' | 'createdAt'> & { 
     role: isOwner ? 'owner' : user.role,
     balance: user.balance,
     currency: user.currency || 'EGP',
+    themeId: user.themeId,
     isActive: user.isActive,
     isApproved: isOwner ? true : user.isApproved,
     adminPermissions: isOwner ? ['approveDoctors', 'manageUsers', 'manageDoctors'] : user.role === 'admin' ? DEFAULT_ADMIN_PERMISSIONS : user.adminPermissions,

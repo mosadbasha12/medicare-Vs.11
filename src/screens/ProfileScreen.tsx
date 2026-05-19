@@ -174,6 +174,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
              color={COLORS.accentWarm} 
              onPress={() => navigation.navigate('Language')}
            />
+           <SettingItem icon="palette" label="الثيمات" color={COLORS.primaryLight} onPress={() => navigation.navigate('Theme')} />
            <SettingItem icon="bell" label={t('notifications')} color={COLORS.danger} onPress={() => navigation.navigate('Notifications')} />
            <SettingItem icon="shield-alt" label={t('privacy')} color={COLORS.textSecondary} onPress={() => navigation.navigate('PrivacySecurity')} />
         </GlassCard>

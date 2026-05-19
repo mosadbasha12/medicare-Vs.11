@@ -15,6 +15,7 @@ export interface AppUser {
   role: UserRole;
   balance: number;
   currency?: Currency;
+  themeId?: string;
   isActive: boolean;
   isApproved: boolean;
   adminPermissions?: AdminPermission[];
@@ -178,6 +179,7 @@ export type RootStackParamList = {
   Payment: undefined;
   EditProfile: undefined;
   Language: undefined;
+  Theme: undefined;
   Transactions: undefined;
   Notifications: undefined;
   PrivacySecurity: undefined;

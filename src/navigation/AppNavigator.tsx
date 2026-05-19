@@ -19,6 +19,7 @@ import ChatListScreen from '../screens/ChatListScreen';
 import PaymentScreen from '../screens/PaymentScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import LanguageScreen from '../screens/LanguageScreen';
+import ThemeScreen from '../screens/ThemeScreen';
 import TransactionsScreen from '../screens/TransactionsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import ResultsScreen from '../screens/ResultsScreen';
@@ -109,6 +110,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Payment" component={PaymentScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
           <Stack.Screen name="Language" component={LanguageScreen} />
+          <Stack.Screen name="Theme" component={ThemeScreen} />
           <Stack.Screen name="Transactions" component={TransactionsScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="PrivacySecurity" component={PrivacySecurityScreen} />
