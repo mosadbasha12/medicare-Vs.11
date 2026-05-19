@@ -96,7 +96,13 @@ export default function ChatListScreen({ navigation }: any) {
                     <Text style={styles.subText} numberOfLines={1}>{chat.lastMessage}</Text>
                   </View>
                   <View style={styles.metaBox}>
-                    <Text style={styles.countText}>{chat.messagesCount}</Text>
+                    {!!chat.unreadCount && chat.unreadCount > 0 ? (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{chat.unreadCount > 99 ? '99+' : chat.unreadCount}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.countText}>{chat.messagesCount}</Text>
+                    )}
                     <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
                   </View>
                 </GlassCard>
@@ -141,6 +147,8 @@ const styles = StyleSheet.create({
   subText: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'right' },
   metaBox: { alignItems: 'center', gap: 6 },
   countText: { color: COLORS.primaryLight, fontSize: 11, fontWeight: 'bold' },
+  unreadBadge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: COLORS.danger, alignItems: 'center', justifyContent: 'center' },
+  unreadText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
   chatIcon: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.primarySofter },
   emptyCard: { alignItems: 'center', padding: 22, marginBottom: 12 },
   emptyText: { color: COLORS.textSecondary, fontSize: 13, marginTop: 8, textAlign: 'center' },

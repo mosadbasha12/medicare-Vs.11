@@ -4,7 +4,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getUserAppointments, getUserResults, getUserPrescriptions } from '../utils/localDataService';
+import { getUserAppointments, getUserResults, getUserPrescriptions, subscribeUnreadChatCount } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 interface HomeScreenProps {
@@ -19,6 +19,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [resultsCount, setResultsCount] = useState(0);
   const [prescriptionsCount, setPrescriptionsCount] = useState(0);
+  const [unreadChats, setUnreadChats] = useState(0);
   const healthFields = [
     user?.age && user.age > 0 ? user.age : undefined,
     user?.weight && user.weight > 0 ? user.weight : undefined,
@@ -45,6 +46,8 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     fetchData();
   }, [user?.uid]);
 
+  useEffect(() => subscribeUnreadChatCount(user?.uid, setUnreadChats), [user?.uid]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.bgCircle, { top: -100, right: -50, backgroundColor: COLORS.primarySofter }]} />
@@ -62,7 +65,11 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
         <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Notifications')}>
           <Ionicons name="notifications-outline" size={24} color={COLORS.textPrimary} />
-          <View style={styles.badge} />
+          {unreadChats > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadChats > 99 ? '99+' : unreadChats}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -88,7 +95,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         <Text style={styles.sectionTitle}>{t('quickActions')}</Text>
         <View style={styles.quickActionsContainer}>
           <QuickAction icon="user-md" label={t('doctor')} onPress={() => navigation.navigate('الأطباء')} />
-          <QuickAction icon="comments" label={t('chat')} onPress={() => navigation.navigate('ChatList')} />
+          <QuickAction icon="comments" label={unreadChats > 0 ? `${t('chat')} (${unreadChats})` : t('chat')} onPress={() => navigation.navigate('ChatList')} />
           <QuickAction icon="vial" label={t('results')} onPress={() => navigation.navigate('Results')} />
           <QuickAction icon="first-aid" label={t('emergency')} onPress={() => navigation.navigate('Emergency')} />
         </View>
@@ -170,7 +177,8 @@ const styles = StyleSheet.create({
   greeting: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold' },
   subGreeting: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bgCard, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.borderColor },
-  badge: { position: 'absolute', top: 10, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.danger, borderWidth: 1, borderColor: COLORS.bgBase },
+  badge: { position: 'absolute', top: 4, right: 4, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: COLORS.danger, borderWidth: 1, borderColor: COLORS.bgBase, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
   scrollContent: { paddingHorizontal: 24, paddingVertical: 16 },
   gridContainer: { flexDirection: 'row-reverse', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 24 },
   statCard: { width: '48%', backgroundColor: COLORS.bgCard, borderRadius: 20, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: COLORS.borderColor },

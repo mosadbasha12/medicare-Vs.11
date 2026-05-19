@@ -62,6 +62,7 @@ export interface ChatSummary {
   lastMessage: string;
   lastMessageAt: string;
   messagesCount: number;
+  unreadCount?: number;
 }
 
 export interface ChatMessageInput {
@@ -959,6 +960,15 @@ const uniqueSortedMessages = (messages: ChatMessage[]): ChatMessage[] => {
   return Array.from(byId.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 };
 
+const countUnreadMessages = (messages: ChatMessage[], userId: string, lastReadAt?: string): number => {
+  const lastReadTime = lastReadAt ? new Date(lastReadAt).getTime() : 0;
+  return messages.filter((message) => {
+    if (message.senderId === userId) return false;
+    if (message.recipientId && message.recipientId !== userId) return false;
+    return new Date(message.createdAt).getTime() > lastReadTime;
+  }).length;
+};
+
 const getSharedChatThreadMessages = async (chatId: string): Promise<ChatMessage[]> => {
   if (!FIREBASE_ENABLED) return [];
   try {
@@ -1008,6 +1018,83 @@ const getSharedChatThreadsForUser = async (userId: string): Promise<any[]> => {
     console.error('Firebase getSharedChatThreadsForUser error:', error);
     return [];
   }
+};
+
+export const markChatThreadRead = async (userId: string, chatId: string): Promise<void> => {
+  if (!userId || !chatId) return;
+  const readAt = new Date().toISOString();
+
+  if (FIREBASE_ENABLED) {
+    try {
+      await setDoc(getSharedChatRef(chatId), {
+        readBy: { [userId]: readAt },
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase markChatThreadRead error:', error);
+    }
+  }
+
+  try {
+    await AsyncStorage.setItem(`@chat_read_${userId}_${chatId}`, readAt);
+  } catch {
+    // Local read markers are best-effort only.
+  }
+};
+
+export const subscribeUnreadChatCount = (
+  userId: string | undefined,
+  callback: (count: number) => void
+): (() => void) => {
+  if (!userId) {
+    callback(0);
+    return () => undefined;
+  }
+
+  let disposed = false;
+  const computeLocalUnread = async () => {
+    if (FIREBASE_ENABLED) {
+      const threads = await getSharedChatThreadsForUser(userId);
+      const count = threads.reduce((total, thread: any) => {
+        const messages = Array.isArray(thread.messages)
+          ? thread.messages.map((item: any) => normalizeChatMessage(item.id, thread.chatId, item))
+          : [];
+        return total + countUnreadMessages(messages, userId, thread.readBy?.[userId]);
+      }, 0);
+      if (!disposed) callback(count);
+      return;
+    }
+    if (!disposed) callback(0);
+  };
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const q = query(collection(db, 'appointments'), where('participantIds', 'array-contains', userId));
+      const unsubscribe = onSnapshot(q, (snap) => {
+        const count = snap.docs.reduce((total, threadDoc) => {
+          const thread = threadDoc.data() as any;
+          if (thread.type !== 'chatThread' || !Array.isArray(thread.messages)) return total;
+          const messages = thread.messages.map((item: any) => normalizeChatMessage(item.id, thread.chatId, item));
+          return total + countUnreadMessages(messages, userId, thread.readBy?.[userId]);
+        }, 0);
+        if (!disposed) callback(count);
+      }, () => {
+        computeLocalUnread();
+      });
+      return () => {
+        disposed = true;
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('Firebase subscribeUnreadChatCount error:', error);
+    }
+  }
+
+  computeLocalUnread();
+  const interval = setInterval(computeLocalUnread, 5000);
+  return () => {
+    disposed = true;
+    clearInterval(interval);
+  };
 };
 
 const mirrorChatToUserDocs = async (
@@ -1210,6 +1297,7 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
     if (messages.length === 0) continue;
 
     const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    const thread = sharedThreadByChatId.get(chatId) || mirroredThreads?.[chatId];
     summaries.push({
       chatId,
       doctorId: doctor.id,
@@ -1219,6 +1307,7 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
       lastMessage: last.text || (last.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
       lastMessageAt: last.createdAt,
       messagesCount: messages.length,
+      unreadCount: countUnreadMessages(messages, userId, thread?.readBy?.[userId]),
     });
   }
 
@@ -1239,6 +1328,7 @@ export const getUserChatSummaries = async (userId: string): Promise<ChatSummary[
       lastMessage: last.text || (last.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
       lastMessageAt: last.createdAt,
       messagesCount: messages.length,
+      unreadCount: countUnreadMessages(messages, userId, thread.readBy?.[userId]),
     });
   });
 
@@ -1327,6 +1417,7 @@ export const getDoctorChatSummaries = async (doctorId: string): Promise<ChatSumm
   for (const chatId of chatIds) {
     const messages = await getChatMessages(chatId, doctorId);
     if (messages.length === 0) continue;
+    const sharedThread = sharedThreads.find((thread: any) => thread.chatId === chatId) || doctorDocData?.chatThreads?.[chatId];
     const last = [...messages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
     const patientId = participantIdsByChatId.get(chatId)?.find((id) => id && id !== doctorId) || (last.senderId !== doctorId ? last.senderId : last.recipientId) || chatId.split('_').find((id) => id && id !== doctorId) || last.senderId;
     const patientName = patientNames.get(patientId) || (last.senderId === patientId ? last.senderName : 'مريض');
@@ -1339,6 +1430,7 @@ export const getDoctorChatSummaries = async (doctorId: string): Promise<ChatSumm
       lastMessage: last.text || (last.attachmentName ? `مرفق: ${last.attachmentName}` : 'رسالة جديدة'),
       lastMessageAt: last.createdAt,
       messagesCount: messages.length,
+      unreadCount: countUnreadMessages(messages, doctorId, sharedThread?.readBy?.[doctorId]),
     });
   }
 

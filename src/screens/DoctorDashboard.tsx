@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { addDoctorToCatalog, createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, subscribePlatformSettings, updateAppointmentStatus, updateUserProfile } from '../utils/localDataService';
+import { addDoctorToCatalog, createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus, updateUserProfile } from '../utils/localDataService';
 import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
@@ -37,6 +37,7 @@ export default function DoctorDashboard({ navigation }: any) {
   const [clinicPrice, setClinicPrice] = useState(String(user?.doctorClinicPrice ?? user?.doctorVideoPrice ?? 60));
   const [commissionRate, setCommissionRate] = useState(5);
   const [earnings, setEarnings] = useState({ balance: user?.balance ?? 0, totalNet: 0, completedNet: 0, pendingNet: 0 });
+  const [unreadChats, setUnreadChats] = useState(0);
   const hasAdminAccess = (user?.adminPermissions?.length || 0) > 0;
   const currencySymbol = user?.currency === 'USD' ? '$' : 'ج.م';
 
@@ -75,6 +76,8 @@ export default function DoctorDashboard({ navigation }: any) {
   }, [fetchData]);
 
   useEffect(() => subscribePlatformSettings((settings) => setCommissionRate(settings.commissionRate)), []);
+
+  useEffect(() => subscribeUnreadChatCount(user?.uid, setUnreadChats), [user?.uid]);
 
   const handleSavePrices = async () => {
     if (!user?.uid) return;
@@ -139,6 +142,11 @@ export default function DoctorDashboard({ navigation }: any) {
         <TouchableOpacity style={styles.adminToolsBtn} onPress={() => navigation.navigate('ChatList')}>
           <Ionicons name="chatbubbles-outline" size={18} color={COLORS.primaryLight} />
           <Text style={styles.adminToolsText}>محادثات المرضى</Text>
+          {unreadChats > 0 && (
+            <View style={styles.chatBadge}>
+              <Text style={styles.chatBadgeText}>{unreadChats > 99 ? '99+' : unreadChats}</Text>
+            </View>
+          )}
         </TouchableOpacity>
         <TouchableOpacity onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
@@ -632,6 +640,8 @@ const styles = StyleSheet.create({
   signOutRow: { paddingHorizontal: 24, paddingVertical: 8, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   adminToolsBtn: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '55', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12, gap: 6 },
   adminToolsText: { color: COLORS.primaryLight, fontSize: 13, fontWeight: 'bold' },
+  chatBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: COLORS.danger, alignItems: 'center', justifyContent: 'center' },
+  chatBadgeText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
   signOutText: { color: COLORS.danger, fontSize: 13, fontWeight: 'bold', marginRight: 4 },
   content: { padding: 24, paddingBottom: 60 },
   mainInfoCard: { padding: 20, marginBottom: 24, backgroundColor: COLORS.primarySofter },

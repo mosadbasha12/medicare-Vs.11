@@ -4,7 +4,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { sendMessage, listenToMessages } from '../utils/localDataService';
+import { sendMessage, listenToMessages, markChatThreadRead } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function ChatScreen(props: any) {
@@ -26,6 +26,11 @@ export default function ChatScreen(props: any) {
     }, user?.uid);
     return () => unsubscribe();
   }, [chatId, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid || !hasChatTarget || messages.length === 0) return;
+    markChatThreadRead(user.uid, chatId);
+  }, [chatId, hasChatTarget, messages.length, user?.uid]);
 
   const sendNewMessage = async () => {
     if (!input.trim() || !user || !hasChatTarget) return;

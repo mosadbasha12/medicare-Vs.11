@@ -4,13 +4,14 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getUserNotifications } from '../utils/localDataService';
+import { getUserNotifications, subscribeUnreadChatCount } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
-export default function NotificationsScreen({ navigation }: { navigation: { goBack: () => void } }) {
+export default function NotificationsScreen({ navigation }: any) {
   const { user } = useUser();
   const { t } = useLanguage();
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadChats, setUnreadChats] = useState(0);
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -19,7 +20,11 @@ export default function NotificationsScreen({ navigation }: { navigation: { goBa
       setNotifications(data);
     };
     fetchNotifications();
+    const timer = setInterval(fetchNotifications, 5000);
+    return () => clearInterval(timer);
   }, [user?.uid]);
+
+  useEffect(() => subscribeUnreadChatCount(user?.uid, setUnreadChats), [user?.uid]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -27,30 +32,49 @@ export default function NotificationsScreen({ navigation }: { navigation: { goBa
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-forward" size={28} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('notifications')}</Text>
+        <Text style={styles.headerTitle}>{unreadChats > 0 ? `${t('notifications')} (${unreadChats})` : t('notifications')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
       <FlatList
-        data={notifications}
+        data={[
+          ...(unreadChats > 0 ? [{ id: 'unread_chats', type: 'unreadChats' }] : []),
+          ...notifications,
+        ]}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <Text style={styles.emptyText}>{t('noNotifications')}</Text>
         }
         renderItem={({ item }) => (
-          <GlassCard style={styles.card}>
-            <View style={[styles.iconBox, { backgroundColor: item.color + '22' }]}>
-               <FontAwesome5 name={item.icon as any} size={18} color={item.color} />
-            </View>
-            <View style={styles.textContainer}>
-               <View style={styles.row}>
-                 <Text style={styles.title}>{item.title}</Text>
-                 <Text style={styles.time}>{item.time}</Text>
-               </View>
-               <Text style={styles.desc}>{item.desc}</Text>
-            </View>
-          </GlassCard>
+          item.type === 'unreadChats' ? (
+            <TouchableOpacity onPress={() => navigation.navigate('ChatList')}>
+              <GlassCard style={[styles.card, styles.chatNoticeCard]}>
+                <View style={[styles.iconBox, { backgroundColor: COLORS.danger + '22' }]}>
+                  <FontAwesome5 name="comments" size={18} color={COLORS.danger} />
+                </View>
+                <View style={styles.textContainer}>
+                  <Text style={styles.title}>رسائل جديدة</Text>
+                  <Text style={styles.desc}>عندك {unreadChats} رسالة غير مقروءة. افتح المحادثات للرد.</Text>
+                </View>
+              </GlassCard>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity disabled={!item.chatId} onPress={() => item.chatId && navigation.navigate('ChatList')}>
+              <GlassCard style={styles.card}>
+                <View style={[styles.iconBox, { backgroundColor: item.color + '22' }]}>
+                  <FontAwesome5 name={item.icon as any} size={18} color={item.color} />
+                </View>
+                <View style={styles.textContainer}>
+                  <View style={styles.row}>
+                    <Text style={styles.title}>{item.title}</Text>
+                    <Text style={styles.time}>{item.time}</Text>
+                  </View>
+                  <Text style={styles.desc}>{item.desc}</Text>
+                </View>
+              </GlassCard>
+            </TouchableOpacity>
+          )
         )}
       />
     </SafeAreaView>
@@ -63,6 +87,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: 'bold' },
   list: { padding: 24 },
   card: { flexDirection: 'row-reverse', alignItems: 'flex-start', marginBottom: 16, padding: 16 },
+  chatNoticeCard: { borderColor: COLORS.danger + '66' },
   iconBox: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginLeft: 16 },
   textContainer: { flex: 1 },
   row: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
