@@ -278,7 +278,7 @@ export default function DoctorDashboard({ navigation }: any) {
                     )}
                     <TouchableOpacity
                       style={styles.patientChatBtn}
-                      onPress={() => navigation.navigate('Chat', { doctorName: apt.patientName || 'مريض', doctorId: user?.uid, chatId: `${apt.patientId}_${user?.uid}` })}
+                      onPress={() => navigation.navigate('Chat', { doctorName: apt.patientName || 'مريض', doctorId: user?.uid, recipientId: apt.patientId, chatId: `${apt.patientId}_${user?.uid}` })}
                     >
                       <Ionicons name="chatbubble-ellipses-outline" size={18} color={COLORS.primaryLight} />
                       <Text style={styles.patientChatText}>دردشة مع المريض</Text>

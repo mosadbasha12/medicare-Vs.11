@@ -162,7 +162,7 @@ export type RootStackParamList = {
   Register: undefined;
   MainTabs: undefined;
   ChatList: undefined;
-  Chat: { doctorId?: string; doctorName: string; chatId?: string };
+  Chat: { doctorId?: string; doctorName: string; chatId?: string; recipientId?: string };
   Payment: undefined;
   EditProfile: undefined;
   Language: undefined;

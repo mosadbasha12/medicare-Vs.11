@@ -13,8 +13,9 @@ export default function ChatScreen(props: any) {
   const { t } = useLanguage();
   const doctorName = route.params?.doctorName || t('chooseDoctor');
   const doctorId = route.params?.doctorId;
-  const hasDoctor = Boolean(doctorId);
   const chatId = route.params?.chatId || (user?.uid && doctorId ? `${user.uid}_${doctorId}` : 'temp');
+  const recipientId = route.params?.recipientId || chatId.split('_').find((id: string) => id && id !== user?.uid);
+  const hasChatTarget = Boolean(user?.uid && chatId !== 'temp' && recipientId);
   
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -27,11 +28,12 @@ export default function ChatScreen(props: any) {
   }, [chatId]);
 
   const sendNewMessage = async () => {
-    if (!input.trim() || !user) return;
+    if (!input.trim() || !user || !hasChatTarget) return;
     const msg = {
       chatId,
       senderId: user.uid,
       senderName: user.name,
+      recipientId,
       text: input.trim(),
       createdAt: new Date().toISOString(),
     };
@@ -41,7 +43,7 @@ export default function ChatScreen(props: any) {
   };
 
   const sendAttachment = async (file: File) => {
-    if (!user || !hasDoctor) return;
+    if (!user || !hasChatTarget) return;
     if (file.size > 700 * 1024) {
       Alert.alert('تنبيه', 'حجم المرفق كبير. اختر ملف أقل من 700KB مؤقتاً.');
       return;
@@ -59,6 +61,7 @@ export default function ChatScreen(props: any) {
         chatId,
         senderId: user.uid,
         senderName: user.name,
+        recipientId,
         text: input.trim() || `مرفق: ${file.name}`,
         createdAt: new Date().toISOString(),
         attachmentName: file.name,
@@ -73,7 +76,7 @@ export default function ChatScreen(props: any) {
   };
 
   const pickAttachment = () => {
-    if (!hasDoctor) return;
+    if (!hasChatTarget) return;
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
       Alert.alert('تنبيه', 'إرسال المرفقات متاح حالياً من نسخة الويب.');
       return;
@@ -122,7 +125,7 @@ export default function ChatScreen(props: any) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messageList}
         ListEmptyComponent={
-          !hasDoctor ? (
+          !hasChatTarget ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>{t('chooseDoctor')}</Text>
               <Text style={styles.emptyText}>{t('chooseDoctorForChat')}</Text>
@@ -155,19 +158,19 @@ export default function ChatScreen(props: any) {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <GlassCard style={styles.inputArea}>
-          <TouchableOpacity style={styles.sendBtn} onPress={sendNewMessage} disabled={!hasDoctor}>
-            <Ionicons name="send" size={24} color={COLORS.primaryLight} />
+          <TouchableOpacity style={[styles.sendBtn, !hasChatTarget && styles.disabledBtn]} onPress={sendNewMessage} disabled={!hasChatTarget}>
+            <Ionicons name="send" size={24} color={hasChatTarget ? COLORS.primaryLight : COLORS.textMuted} />
           </TouchableOpacity>
           <TextInput
             style={styles.input}
-            placeholder={hasDoctor ? t('writeMessage') : t('chooseDoctorFirst')}
+            placeholder={hasChatTarget ? t('writeMessage') : t('chooseDoctorFirst')}
             placeholderTextColor={COLORS.textSecondary}
             value={input}
             onChangeText={setInput}
-            editable={hasDoctor}
+            editable={hasChatTarget}
           />
-          <TouchableOpacity style={styles.attachBtn} onPress={pickAttachment} disabled={!hasDoctor}>
-            <Ionicons name="attach" size={24} color={COLORS.textSecondary} />
+          <TouchableOpacity style={[styles.attachBtn, !hasChatTarget && styles.disabledBtn]} onPress={pickAttachment} disabled={!hasChatTarget}>
+            <Ionicons name="attach" size={24} color={hasChatTarget ? COLORS.textSecondary : COLORS.textMuted} />
           </TouchableOpacity>
         </GlassCard>
       </KeyboardAvoidingView>
@@ -204,4 +207,5 @@ const styles = StyleSheet.create({
   input: { flex: 1, color: COLORS.textPrimary, textAlign: 'right', paddingHorizontal: 12, fontSize: 16 },
   sendBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   attachBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  disabledBtn: { opacity: 0.45 },
 });
