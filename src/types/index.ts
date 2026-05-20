@@ -169,6 +169,8 @@ export interface Prescription {
   totalDoses?: number;
   takenDoses?: number;
   lastTakenAt?: string;
+  refillCount?: number;
+  lastRefillAt?: string;
 }
 
 export interface MedicineCatalogItem {

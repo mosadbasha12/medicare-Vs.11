@@ -5,13 +5,9 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import {
-  getNearestAvailablePharmacies,
-  getPrescriptionOrders,
+  addPrescriptionSupply,
   getUserPrescriptions,
   markPrescriptionDoseTaken,
-  orderPrescription,
-  recordManualPrescriptionPurchase,
-  type Pharmacy,
 } from '../utils/localDataService';
 
 function showAlert(title: string, message: string, onOk?: () => void) {
@@ -23,73 +19,19 @@ function showAlert(title: string, message: string, onOk?: () => void) {
   }
 }
 
-const ORDER_STATUS_CONFIG: Record<string, { color: string; bg: string; icon: string }> = {
-  'جاري التوصيل': { color: COLORS.accentWarm, bg: COLORS.accentWarm + '22', icon: 'delivery' },
-  'تم التوصيل': { color: COLORS.secondary, bg: COLORS.secondary + '22', icon: 'checkmark-circle' },
-  'تم الشراء يدوياً': { color: COLORS.secondary, bg: COLORS.secondary + '22', icon: 'bag-check-outline' },
-  'قيد المراجعة': { color: COLORS.primaryLight, bg: COLORS.primaryLight + '22', icon: 'hourglass' },
-  'ملغي': { color: COLORS.danger, bg: COLORS.danger + '22', icon: 'close-circle' },
-};
-
-const resolveUserLocation = (): Promise<{ latitude: number; longitude: number } | null> => {
-  if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.geolocation) {
-    return Promise.resolve(null);
-  }
-
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => resolve({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 3500, maximumAge: 10 * 60 * 1000 }
-    );
-  });
-};
-
 export default function PrescriptionsScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { user } = useUser();
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [pharmacyOptions, setPharmacyOptions] = useState<Record<string, (Pharmacy & { distanceKm: number })[]>>({});
 
   const fetchData = async () => {
     if (!user?.uid) return;
-    const location = await resolveUserLocation();
-    const [prescs, ords] = await Promise.all([
-      getUserPrescriptions(user.uid),
-      getPrescriptionOrders(user.uid),
-    ]);
-    const pharmaciesByPrescription = await prescs.reduce<Promise<Record<string, (Pharmacy & { distanceKm: number })[]>>>(async (promise, prescription) => {
-      const next = await promise;
-      next[prescription.id] = await getNearestAvailablePharmacies(prescription, location);
-      return next;
-    }, Promise.resolve({}));
+    const prescs = await getUserPrescriptions(user.uid);
     setPrescriptions(prescs);
-    setOrders(ords);
-    setPharmacyOptions(pharmaciesByPrescription);
   };
 
   useEffect(() => {
     fetchData();
   }, [user?.uid]);
-
-  const handleOrder = async (item: any) => {
-    const selectedPharmacy = pharmacyOptions[item.id]?.[0];
-    if (!selectedPharmacy) {
-      showAlert('غير متوفر', 'لا توجد صيدلية متاحة لهذا الدواء حالياً.');
-      return;
-    }
-    const success = await orderPrescription(user!.uid, item, selectedPharmacy);
-    if (success) {
-      showAlert('تم الطلب', `جاري توصيل ${item.med} من ${selectedPharmacy.name}\n${selectedPharmacy.address}\nرقم الصيدلية: ${selectedPharmacy.phone}`, () => {
-        fetchData();
-      });
-    } else {
-      showAlert('خطأ', 'فشل في إرسال الطلب');
-    }
-  };
 
   const handleDoseTaken = async (item: any) => {
     if (!user?.uid) return;
@@ -101,20 +43,17 @@ export default function PrescriptionsScreen({ navigation }: { navigation: { goBa
     }
   };
 
-  const handleManualPurchase = async (item: any) => {
+  const handleSupplyAdded = async (item: any) => {
     if (!user?.uid) return;
-    const success = await recordManualPrescriptionPurchase(user.uid, item);
-    if (success) {
-      showAlert('تم التسجيل', 'تم تسجيل شراء الجرعة يدوياً وإضافتها في عداد الجرعات.', () => {
+    const updated = await addPrescriptionSupply(user.uid, item.id);
+    if (updated) {
+      const addedDoses = Math.max(1, (item.timesPerDay || 0) * (item.durationDays || 0) || item.totalDoses || 1);
+      showAlert('تمت الإضافة', `تمت إضافة كمية جديدة: ${addedDoses} جرعة.`, () => {
         fetchData();
       });
     } else {
-      showAlert('خطأ', 'تعذر تسجيل الشراء اليدوي.');
+      showAlert('خطأ', 'تعذر إضافة الكمية الجديدة.');
     }
-  };
-
-  const getPrescriptionOrder = (prescriptionId: string) => {
-    return orders.find((o) => o.prescriptionId === prescriptionId);
   };
 
   return (
@@ -135,13 +74,10 @@ export default function PrescriptionsScreen({ navigation }: { navigation: { goBa
           <Text style={styles.emptyText}>لا توجد وصفات طبية</Text>
         }
         renderItem={({ item }) => {
-          const order = getPrescriptionOrder(item.id);
-          const statusConfig = order ? ORDER_STATUS_CONFIG[order.status] : null;
           const totalDoses = item.totalDoses || ((item.timesPerDay || 0) * (item.durationDays || 0));
           const takenDoses = item.takenDoses || 0;
           const remainingDoses = totalDoses > 0 ? Math.max(0, totalDoses - takenDoses) : null;
           const progressPercent = totalDoses > 0 ? Math.min(100, Math.round((takenDoses / totalDoses) * 100)) : 0;
-          const nearestPharmacy = pharmacyOptions[item.id]?.[0];
 
           return (
             <GlassCard style={styles.card}>
@@ -174,61 +110,20 @@ export default function PrescriptionsScreen({ navigation }: { navigation: { goBa
                     <Ionicons name="checkmark-circle" size={16} color={COLORS.bgBase} />
                     <Text style={styles.doseBtnText}>{remainingDoses === 0 ? 'اكتمل العلاج' : 'تم أخذ جرعة'}</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.refillBtn}
+                    onPress={() => handleSupplyAdded(item)}
+                  >
+                    <Ionicons name="add-circle-outline" size={16} color={COLORS.primaryLight} />
+                    <Text style={styles.refillBtnText}>اشتريت كمية جديدة</Text>
+                  </TouchableOpacity>
                 </View>
               )}
-
-              {order && (
-                <View style={[styles.statusBadge, { backgroundColor: statusConfig?.bg || 'transparent' }]}>
-                  <Ionicons name={statusConfig?.icon as any} size={16} color={statusConfig?.color || '#FFF'} />
-                  <Text style={[styles.statusText, { color: statusConfig?.color || '#FFF' }]}>
-                    {order.status} • {order.orderedAt}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.pharmacyPanel}>
-                <View style={styles.pharmacyHeader}>
-                  <Ionicons name="location-outline" size={17} color={COLORS.primaryLight} />
-                  <Text style={styles.pharmacyTitle}>{order?.pharmacyName ? 'الصيدلية المختارة' : 'أقرب صيدلية متاح فيها الدواء'}</Text>
-                </View>
-                {order?.pharmacyName ? (
-                  <>
-                    <Text style={styles.pharmacyName}>{order.pharmacyName}</Text>
-                    <Text style={styles.pharmacyMeta}>{order.pharmacyAddress}</Text>
-                    <Text style={styles.pharmacyMeta}>الهاتف: {order.pharmacyPhone}{order.distanceKm ? ` • ${order.distanceKm} كم` : ''}</Text>
-                  </>
-                ) : nearestPharmacy ? (
-                  <>
-                    <Text style={styles.pharmacyName}>{nearestPharmacy.name}</Text>
-                    <Text style={styles.pharmacyMeta}>{nearestPharmacy.address}</Text>
-                    <Text style={styles.pharmacyMeta}>الهاتف: {nearestPharmacy.phone} • {nearestPharmacy.distanceKm} كم • توصيل {nearestPharmacy.deliveryMinutes}</Text>
-                  </>
-                ) : (
-                  <Text style={styles.pharmacyMeta}>لا توجد صيدلية متاحة لهذا الدواء حالياً.</Text>
-                )}
-              </View>
 
               <View style={styles.bottomRow}>
                 <Text style={styles.footerText}>بواسطة: {item.doctor}</Text>
                 <Text style={styles.footerText}>{item.date}</Text>
-                {(!order || order.source === 'manual') && (
-                  <TouchableOpacity style={styles.orderBtn} onPress={() => handleOrder(item)}>
-                    <Ionicons name="cart" size={12} color="#000" />
-                    <Text style={styles.orderText}>طلب من الصيدلية</Text>
-                  </TouchableOpacity>
-                )}
-                {(!order || order.status !== 'جاري التوصيل') && remainingDoses !== 0 && (
-                  <TouchableOpacity style={styles.manualBtn} onPress={() => handleManualPurchase(item)}>
-                    <Ionicons name="bag-check-outline" size={13} color={COLORS.primaryLight} />
-                    <Text style={styles.manualText}>اشتريت جرعة بنفسي</Text>
-                  </TouchableOpacity>
-                )}
-                {order && order.status === 'جاري التوصيل' && (
-                  <View style={styles.deliveringBadge}>
-                    <Ionicons name="bicycle" size={14} color="#FFF" />
-                    <Text style={styles.deliveringText}>قيد التوصيل</Text>
-                  </View>
-                )}
+                {!!item.refillCount && <Text style={styles.footerText}>تم شراء كمية جديدة {item.refillCount} مرة</Text>}
               </View>
             </GlassCard>
           );
@@ -259,20 +154,9 @@ const styles = StyleSheet.create({
   doseBtn: { alignSelf: 'flex-start', backgroundColor: COLORS.accentWarm, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 6 },
   doseBtnDisabled: { opacity: 0.55 },
   doseBtnText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
-  statusBadge: { flexDirection: 'row-reverse', alignItems: 'center', padding: 8, borderRadius: 8, marginBottom: 12, gap: 8 },
-  statusText: { fontSize: 13, fontWeight: 'bold' },
-  pharmacyPanel: { backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '55', borderRadius: 12, padding: 12, marginBottom: 12 },
-  pharmacyHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginBottom: 7 },
-  pharmacyTitle: { color: COLORS.primaryLight, fontSize: 12, fontWeight: 'bold', textAlign: 'right' },
-  pharmacyName: { color: COLORS.textPrimary, fontSize: 13, fontWeight: 'bold', textAlign: 'right', marginBottom: 4 },
-  pharmacyMeta: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', lineHeight: 17 },
+  refillBtn: { alignSelf: 'flex-start', backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '66', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 8 },
+  refillBtnText: { color: COLORS.primaryLight, fontSize: 12, fontWeight: 'bold' },
   bottomRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingTop: 12, gap: 8, flexWrap: 'wrap' },
   footerText: { color: COLORS.textMuted, fontSize: 11 },
-  orderBtn: { backgroundColor: COLORS.primaryLight, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
-  orderText: { color: '#000', fontSize: 11, fontWeight: 'bold' },
-  manualBtn: { backgroundColor: COLORS.primarySofter, borderWidth: 1, borderColor: COLORS.primaryLight + '66', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
-  manualText: { color: COLORS.primaryLight, fontSize: 11, fontWeight: 'bold' },
-  deliveringBadge: { backgroundColor: COLORS.accentWarm, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
-  deliveringText: { color: '#000', fontSize: 11, fontWeight: 'bold' },
   emptyText: { color: COLORS.textSecondary, textAlign: 'center', marginTop: 40, fontSize: 16 },
 });
