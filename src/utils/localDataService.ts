@@ -79,10 +79,28 @@ export interface ExtendedPrescription extends Prescription {
 
 export interface PrescriptionOrder {
   prescriptionId: string;
-  status: 'قيد المراجعة' | 'جاري التوصيل' | 'تم التوصيل' | 'ملغي';
+  status: 'قيد المراجعة' | 'جاري التوصيل' | 'تم التوصيل' | 'تم الشراء يدوياً' | 'ملغي';
   orderedAt: string;
   med: string;
   dosage: string;
+  pharmacyId?: string;
+  pharmacyName?: string;
+  pharmacyAddress?: string;
+  pharmacyPhone?: string;
+  distanceKm?: number;
+  source?: 'delivery' | 'manual';
+  manualPurchasedAt?: string;
+}
+
+export interface Pharmacy {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  lat: number;
+  lng: number;
+  availableMeds: string[];
+  deliveryMinutes: string;
 }
 
 export interface ChatSummary {
@@ -139,6 +157,69 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   commissionRate: 5,
   instapayHandle: 'medicare@instapay',
   themeId: 'ruby',
+};
+
+const DEFAULT_PHARMACIES: Pharmacy[] = [
+  {
+    id: 'ph_cairo_heliopolis',
+    name: 'صيدلية الشفاء - مصر الجديدة',
+    address: '45 شارع الحجاز، مصر الجديدة، القاهرة',
+    phone: '010-2244-5811',
+    lat: 30.1009,
+    lng: 31.3328,
+    availableMeds: ['باراسيتامول', 'panadol', 'paracetamol', 'أوجمنتين', 'augmentin', 'باندول'],
+    deliveryMinutes: '25-35 دقيقة',
+  },
+  {
+    id: 'ph_cairo_nasr',
+    name: 'صيدلية العزبي - مدينة نصر',
+    address: 'شارع عباس العقاد، مدينة نصر، القاهرة',
+    phone: '19600',
+    lat: 30.0566,
+    lng: 31.3301,
+    availableMeds: ['باراسيتامول', 'panadol', 'paracetamol', 'أوجمنتين', 'augmentin', 'فيتامين', 'vitamin'],
+    deliveryMinutes: '20-30 دقيقة',
+  },
+  {
+    id: 'ph_giza_dokki',
+    name: 'صيدلية سيف - الدقي',
+    address: '18 شارع التحرير، الدقي، الجيزة',
+    phone: '19199',
+    lat: 30.0387,
+    lng: 31.2118,
+    availableMeds: ['باراسيتامول', 'panadol', 'paracetamol', 'ibuprofen', 'ايبوبروفين', 'بروفين'],
+    deliveryMinutes: '30-45 دقيقة',
+  },
+  {
+    id: 'ph_alex_smotouha',
+    name: 'صيدلية رشدي - سموحة',
+    address: 'شارع فوزي معاذ، سموحة، الإسكندرية',
+    phone: '010-7788-3402',
+    lat: 31.2165,
+    lng: 29.9426,
+    availableMeds: ['باراسيتامول', 'panadol', 'paracetamol', 'أوجمنتين', 'augmentin', 'مضاد حيوي'],
+    deliveryMinutes: '35-50 دقيقة',
+  },
+];
+
+const normalizeMedName = (value: string): string => value.toLowerCase().replace(/\s+/g, ' ').trim();
+
+const pharmacyHasMedicine = (pharmacy: Pharmacy, med: string): boolean => {
+  const normalizedMed = normalizeMedName(med);
+  return pharmacy.availableMeds.some((candidate) => {
+    const normalizedCandidate = normalizeMedName(candidate);
+    return normalizedMed.includes(normalizedCandidate) || normalizedCandidate.includes(normalizedMed.split(' ')[0] || normalizedMed);
+  });
+};
+
+const distanceInKm = (from: { latitude: number; longitude: number }, to: { lat: number; lng: number }): number => {
+  const earthRadiusKm = 6371;
+  const dLat = ((to.lat - from.latitude) * Math.PI) / 180;
+  const dLng = ((to.lng - from.longitude) * Math.PI) / 180;
+  const lat1 = (from.latitude * Math.PI) / 180;
+  const lat2 = (to.lat * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return Number((earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1));
 };
 
 const createVideoMeetingFields = (appointmentId: string, type: Appointment['type']) => {
@@ -1127,17 +1208,44 @@ export const getPrescriptionOrders = async (userId: string): Promise<Prescriptio
   return stored ? JSON.parse(stored) : [];
 };
 
-export const orderPrescription = async (userId: string, prescription: Prescription): Promise<boolean> => {
+export const getNearestAvailablePharmacies = async (
+  prescription: Pick<Prescription, 'med'>,
+  location?: { latitude: number; longitude: number } | null
+): Promise<(Pharmacy & { distanceKm: number })[]> => {
+  const available = DEFAULT_PHARMACIES.filter((pharmacy) => pharmacyHasMedicine(pharmacy, prescription.med));
+  const fallbackLocation = { latitude: 30.0444, longitude: 31.2357 };
+  const userLocation = location || fallbackLocation;
+  return available
+    .map((pharmacy) => ({
+      ...pharmacy,
+      distanceKm: distanceInKm(userLocation, pharmacy),
+    }))
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+};
+
+const persistPrescriptionOrders = async (userId: string, orders: PrescriptionOrder[]): Promise<void> => {
+  if (FIREBASE_ENABLED) {
+    await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
+  }
+  await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
+};
+
+export const orderPrescription = async (userId: string, prescription: Prescription, pharmacy?: Pharmacy & { distanceKm?: number }): Promise<boolean> => {
   try {
     const orders = await getPrescriptionOrders(userId);
+    const selectedPharmacy = pharmacy || (await getNearestAvailablePharmacies(prescription))[0];
+    if (!selectedPharmacy) return false;
     const existingOrder = orders.find((o) => o.prescriptionId === prescription.id);
     if (existingOrder) {
       existingOrder.status = 'جاري التوصيل';
       existingOrder.orderedAt = new Date().toLocaleDateString('ar-EG');
-      if (FIREBASE_ENABLED) {
-        await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
-      }
-      await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
+      existingOrder.pharmacyId = selectedPharmacy.id;
+      existingOrder.pharmacyName = selectedPharmacy.name;
+      existingOrder.pharmacyAddress = selectedPharmacy.address;
+      existingOrder.pharmacyPhone = selectedPharmacy.phone;
+      existingOrder.distanceKm = selectedPharmacy.distanceKm;
+      existingOrder.source = 'delivery';
+      await persistPrescriptionOrders(userId, orders);
       return true;
     }
     const newOrder: PrescriptionOrder = {
@@ -1146,12 +1254,44 @@ export const orderPrescription = async (userId: string, prescription: Prescripti
       orderedAt: new Date().toLocaleDateString('ar-EG'),
       med: prescription.med,
       dosage: prescription.dosage,
+      pharmacyId: selectedPharmacy.id,
+      pharmacyName: selectedPharmacy.name,
+      pharmacyAddress: selectedPharmacy.address,
+      pharmacyPhone: selectedPharmacy.phone,
+      distanceKm: selectedPharmacy.distanceKm,
+      source: 'delivery',
     };
     orders.push(newOrder);
-    if (FIREBASE_ENABLED) {
-      await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
+    await persistPrescriptionOrders(userId, orders);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const recordManualPrescriptionPurchase = async (userId: string, prescription: Prescription): Promise<boolean> => {
+  try {
+    const orders = await getPrescriptionOrders(userId);
+    const existingOrder = orders.find((o) => o.prescriptionId === prescription.id);
+    const purchasedAt = new Date().toLocaleDateString('ar-EG');
+    if (existingOrder) {
+      existingOrder.status = 'تم الشراء يدوياً';
+      existingOrder.orderedAt = purchasedAt;
+      existingOrder.source = 'manual';
+      existingOrder.manualPurchasedAt = new Date().toISOString();
+    } else {
+      orders.push({
+        prescriptionId: prescription.id,
+        status: 'تم الشراء يدوياً',
+        orderedAt: purchasedAt,
+        med: prescription.med,
+        dosage: prescription.dosage,
+        source: 'manual',
+        manualPurchasedAt: new Date().toISOString(),
+      });
     }
-    await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
+    await persistPrescriptionOrders(userId, orders);
+    await markPrescriptionDoseTaken(userId, prescription.id);
     return true;
   } catch {
     return false;
@@ -1167,10 +1307,7 @@ export const updatePrescriptionOrderStatus = async (userId: string, prescription
     if (status === 'تم التوصيل') {
       orders[idx].orderedAt += ' (تم التوصيل)';
     }
-    if (FIREBASE_ENABLED) {
-      await setDoc(doc(db, 'users', userId), { prescriptionOrders: orders }, { merge: true });
-    }
-    await AsyncStorage.setItem(`@prescription_orders_${userId}`, JSON.stringify(orders));
+    await persistPrescriptionOrders(userId, orders);
     return true;
   } catch {
     return false;
