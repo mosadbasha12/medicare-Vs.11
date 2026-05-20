@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createUserResult, getUserResults } from '../utils/localDataService';
+import { getUserResults, updateUserResult } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 import type { LabResult } from '../types';
 
@@ -14,6 +14,7 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
   const { user } = useUser();
   const { t } = useLanguage();
   const [results, setResults] = useState<LabResult[]>([]);
+  const [activeCategory, setActiveCategory] = useState<UploadCategory>('lab');
 
   const fetchResults = async () => {
     if (!user?.uid) return;
@@ -33,13 +34,7 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
     }
   };
 
-  const getCategoryLabel = (category?: UploadCategory) => {
-    if (category === 'xray') return t('xrayFile');
-    if (category === 'prescription') return t('prescriptionFile');
-    return t('labFile');
-  };
-
-  const uploadFile = (category: UploadCategory) => {
+  const uploadRequestedFile = (request: LabResult) => {
     if (!user?.uid) return;
 
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -60,13 +55,10 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
 
       const reader = new FileReader();
       reader.onload = async () => {
-        const saved = await createUserResult({
-          userId: user.uid,
-          name: file.name,
+        const saved = await updateUserResult(user.uid, request.id, {
+          name: request.name || file.name,
           date: new Date().toLocaleDateString('ar-EG'),
-          lab: getCategoryLabel(category),
           status: 'مرفوع',
-          category,
           fileName: file.name,
           fileData: String(reader.result),
           mimeType: file.type,
@@ -98,6 +90,10 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
     document.body.removeChild(link);
   };
 
+  const filteredResults = results.filter((item) => (item.category || 'lab') === activeCategory);
+  const uploadedCount = filteredResults.filter((item) => item.fileData).length;
+  const pendingCount = filteredResults.filter((item) => !item.fileData).length;
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -109,13 +105,14 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
       </View>
 
       <View style={styles.uploadActions}>
-        <UploadAction icon="vial" label={t('uploadLab')} onPress={() => uploadFile('lab')} />
-        <UploadAction icon="x-ray" label={t('uploadXray')} onPress={() => uploadFile('xray')} />
-        <UploadAction icon="file-prescription" label={t('uploadPrescription')} onPress={() => uploadFile('prescription')} />
+        <FilterAction icon="vial" label="التحاليل" active={activeCategory === 'lab'} onPress={() => setActiveCategory('lab')} />
+        <FilterAction icon="x-ray" label="الأشعة" active={activeCategory === 'xray'} onPress={() => setActiveCategory('xray')} />
+        <FilterAction icon="file-prescription" label="الروشتات" active={activeCategory === 'prescription'} onPress={() => setActiveCategory('prescription')} />
       </View>
+      <Text style={styles.filterSummary}>المرفوع: {uploadedCount} • المطلوب: {pendingCount}</Text>
 
       <FlatList
-        data={results}
+        data={filteredResults}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
@@ -125,7 +122,11 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
           </View>
         }
         renderItem={({ item }) => (
-          <GlassCard style={styles.card}>
+          <TouchableOpacity
+            activeOpacity={item.fileData ? 1 : 0.82}
+            onPress={() => !item.fileData && uploadRequestedFile(item)}
+          >
+          <GlassCard style={[styles.card, !item.fileData && styles.requestCard]}>
             <View style={styles.infoRow}>
                <View style={styles.iconBox}>
                   <FontAwesome5 name={item.category === 'prescription' ? 'file-prescription' : item.category === 'xray' ? 'x-ray' : 'vial'} size={20} color={COLORS.primaryLight} />
@@ -146,22 +147,29 @@ export default function ResultsScreen({ navigation }: { navigation: { goBack: ()
                  <Text style={styles.downloadText}>{t('downloadReport')}</Text>
               </TouchableOpacity>
             ) : (
-              <View style={styles.requestHintBox}>
-                <Ionicons name="information-circle-outline" size={18} color={COLORS.accentWarm} />
-                <Text style={styles.requestHintText}>هذا طلب من الطبيب. ارفع الملف بعد عمل التحليل أو الأشعة ليظهر للطبيب.</Text>
-              </View>
+              <>
+                <View style={styles.requestHintBox}>
+                  <Ionicons name="cloud-upload-outline" size={18} color={COLORS.accentWarm} />
+                  <Text style={styles.requestHintText}>اضغط هنا لرفع الملف المطلوب بعد عمل التحليل أو الأشعة.</Text>
+                </View>
+                <TouchableOpacity style={styles.uploadRequestedBtn} onPress={() => uploadRequestedFile(item)}>
+                  <Ionicons name="cloud-upload-outline" size={18} color={COLORS.bgBase} />
+                  <Text style={styles.uploadRequestedText}>رفع الملف المطلوب</Text>
+                </TouchableOpacity>
+              </>
             )}
           </GlassCard>
+          </TouchableOpacity>
         )}
       />
     </SafeAreaView>
   );
 }
 
-const UploadAction = ({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) => (
-  <TouchableOpacity style={styles.uploadBtn} onPress={onPress}>
+const FilterAction = ({ icon, label, active, onPress }: { icon: string; label: string; active: boolean; onPress: () => void }) => (
+  <TouchableOpacity style={[styles.uploadBtn, active && styles.uploadBtnActive]} onPress={onPress}>
     <FontAwesome5 name={icon as any} size={16} color={COLORS.primaryLight} />
-    <Text style={styles.uploadText}>{label}</Text>
+    <Text style={[styles.uploadText, active && styles.uploadTextActive]}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -171,9 +179,13 @@ const styles = StyleSheet.create({
   headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: 'bold' },
   uploadActions: { flexDirection: 'row-reverse', gap: 10, paddingHorizontal: 24, marginBottom: 4 },
   uploadBtn: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor, justifyContent: 'center', alignItems: 'center', flexDirection: 'row-reverse', gap: 8, paddingHorizontal: 8 },
+  uploadBtnActive: { borderColor: COLORS.primaryLight, backgroundColor: COLORS.primarySofter },
   uploadText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
+  uploadTextActive: { color: COLORS.primaryLight },
+  filterSummary: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', paddingHorizontal: 24, marginTop: 8 },
   list: { padding: 24 },
   card: { marginBottom: 16, padding: 16 },
+  requestCard: { borderColor: COLORS.accentWarm + '66' },
   infoRow: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 16 },
   iconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', marginLeft: 16 },
   mainInfo: { flex: 1 },
@@ -187,6 +199,8 @@ const styles = StyleSheet.create({
   downloadText: { color: COLORS.primaryLight, fontSize: 13, fontWeight: 'bold', marginRight: 8 },
   requestHintBox: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: COLORS.borderColor, paddingTop: 12, gap: 6 },
   requestHintText: { color: COLORS.accentWarm, fontSize: 12, fontWeight: 'bold', textAlign: 'center', flex: 1 },
+  uploadRequestedBtn: { marginTop: 12, backgroundColor: COLORS.accentWarm, borderRadius: 12, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 6 },
+  uploadRequestedText: { color: COLORS.bgBase, fontSize: 13, fontWeight: 'bold' },
   emptyState: { alignItems: 'center', marginTop: 70, paddingHorizontal: 24 },
   emptyTitle: { color: COLORS.textPrimary, textAlign: 'center', fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
   emptyText: { color: COLORS.textSecondary, textAlign: 'center', fontSize: 14, lineHeight: 22 },

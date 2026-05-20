@@ -1142,6 +1142,50 @@ export const createUserResult = async (result: Omit<LabResult, 'id'>): Promise<L
   }
 };
 
+export const updateUserResult = async (
+  userId: string,
+  resultId: string,
+  updates: Partial<LabResult>
+): Promise<LabResult | null> => {
+  try {
+    const results = await getUserResults(userId);
+    const idx = results.findIndex((item) => item.id === resultId);
+    if (idx === -1) return null;
+
+    const previous = results[idx];
+    const nextResult: LabResult = {
+      ...previous,
+      ...updates,
+      id: previous.id,
+      userId: previous.userId,
+    };
+    results[idx] = nextResult;
+
+    if (FIREBASE_ENABLED) {
+      await setDoc(doc(db, 'users', userId), { labResults: results }, { merge: true });
+    }
+    await AsyncStorage.setItem(`@results_${userId}`, JSON.stringify(results));
+
+    if (!previous.fileData && nextResult.fileData && previous.doctorId) {
+      const users = await getAllUsers();
+      const patient = users.find((item) => item.uid === userId);
+      await createMedicalRecordNotification({
+        userId: previous.doctorId,
+        title: `نتيجة جديدة من ${patient?.name || 'المريض'}`,
+        desc: `${nextResult.name} تم رفع الملف المطلوب ويمكنك فتحه من ملف المريض.`,
+        icon: nextResult.category === 'xray' ? 'x-ray' : 'file-medical',
+        color: COLORS.secondary,
+        targetScreen: 'DoctorDashboard',
+      });
+    }
+
+    return nextResult;
+  } catch (error) {
+    console.error('updateUserResult error:', error);
+    return null;
+  }
+};
+
 export const getUserPrescriptions = async (userId: string): Promise<Prescription[]> => {
   if (FIREBASE_ENABLED) {
     const data = await getUserDocData(userId);
@@ -1940,6 +1984,7 @@ const createMedicalRecordNotification = async (input: {
   desc: string;
   icon: string;
   color: string;
+  targetScreen?: string;
 }): Promise<void> => {
   const notification = {
     id: `medical_notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1951,7 +1996,7 @@ const createMedicalRecordNotification = async (input: {
     color: input.color,
     read: false,
     createdAt: new Date().toISOString(),
-    targetScreen: input.icon === 'prescription-bottle-alt' ? 'Prescriptions' : 'Results',
+    targetScreen: input.targetScreen || (input.icon === 'prescription-bottle-alt' ? 'Prescriptions' : 'Results'),
   };
 
   if (FIREBASE_ENABLED) {
