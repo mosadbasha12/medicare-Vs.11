@@ -4,7 +4,7 @@ import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getUserResults, getUserPrescriptions, subscribeUnreadChatCount, subscribeUserAppointments } from '../utils/localDataService';
+import { getUserResults, getUserPrescriptions, subscribeNotificationSummary, subscribeUserAppointments } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 interface HomeScreenProps {
@@ -20,6 +20,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [resultsCount, setResultsCount] = useState(0);
   const [prescriptionsCount, setPrescriptionsCount] = useState(0);
   const [unreadChats, setUnreadChats] = useState(0);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const healthFields = [
     user?.age && user.age > 0 ? user.age : undefined,
     user?.weight && user.weight > 0 ? user.weight : undefined,
@@ -48,7 +49,10 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setAppointmentsCount(apts.filter((a: any) => a.status === 'قادم').length);
   }), [user?.uid]);
 
-  useEffect(() => subscribeUnreadChatCount(user?.uid, setUnreadChats), [user?.uid]);
+  useEffect(() => subscribeNotificationSummary(user?.uid, (summary) => {
+    setUnreadNotifications(summary.totalUnread);
+    setUnreadChats(summary.unreadChats);
+  }), [user?.uid]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -67,9 +71,9 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         </View>
         <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Notifications')}>
           <Ionicons name="notifications-outline" size={24} color={COLORS.textPrimary} />
-          {unreadChats > 0 && (
+          {unreadNotifications > 0 && (
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>{unreadChats > 99 ? '99+' : unreadChats}</Text>
+              <Text style={styles.badgeText}>{unreadNotifications > 99 ? '99+' : unreadNotifications}</Text>
             </View>
           )}
         </TouchableOpacity>

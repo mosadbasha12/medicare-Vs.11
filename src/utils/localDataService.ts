@@ -117,6 +117,12 @@ export interface ChatSummary {
   unreadCount?: number;
 }
 
+export interface NotificationSummary {
+  totalUnread: number;
+  unreadNotifications: number;
+  unreadChats: number;
+}
+
 export interface ChatMessageInput {
   chatId: string;
   senderId: string;
@@ -772,6 +778,15 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
         description: `تم خصم عمولة التطبيق ${platformFee} ${apt.currency}`,
       });
     }
+    await createAppointmentNotification({
+      doctorId: apt.doctorId,
+      patientId: apt.userId,
+      patientName: users[patientIdx].name || 'مريض',
+      doctorName: apt.doctorName,
+      date: apt.date,
+      time: apt.time,
+      appointmentId: newApt.id,
+    });
     const { password, ...updatedUser } = users[patientIdx];
     return { status: 'success', updatedUser, platformFee, doctorNet };
   } catch (error) {
@@ -1028,6 +1043,17 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
   existing.push(newApt);
   await AsyncStorage.setItem(`@appointments_${userId}`, JSON.stringify(existing));
   await incrementConsultationsCount(userId);
+  const users = await getAllUsers();
+  const patient = users.find((u) => u.uid === userId);
+  await createAppointmentNotification({
+    doctorId: apt.doctorId,
+    patientId: userId,
+    patientName: patient?.name || 'مريض',
+    doctorName: apt.doctorName,
+    date: apt.date,
+    time: apt.time,
+    appointmentId: localAppointmentId,
+  });
   return true;
 };
 
@@ -1332,12 +1358,99 @@ export const getUserTransactions = async (userId: string): Promise<Transaction[]
   return transactions.sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime());
 };
 
-export const getUserNotifications = async (userId: string): Promise<any[]> => {
+const getReadNotificationIds = async (userId: string): Promise<Set<string>> => {
+  const ids = new Set<string>();
+  const stored = await AsyncStorage.getItem(`@read_notifications_${userId}`);
+  if (stored) {
+    try {
+      (JSON.parse(stored) as string[]).forEach((id) => ids.add(id));
+    } catch {
+      // Ignore old malformed local state.
+    }
+  }
   if (FIREBASE_ENABLED) {
-    const mergedNotifications: any[] = [];
+    const data = await getUserDocData(userId);
+    if (Array.isArray(data?.readNotificationIds)) {
+      data.readNotificationIds.forEach((id: string) => ids.add(id));
+    }
+  }
+  return ids;
+};
+
+const persistReadNotificationIds = async (userId: string, ids: Set<string>): Promise<void> => {
+  const next = Array.from(ids).slice(-300);
+  await AsyncStorage.setItem(`@read_notifications_${userId}`, JSON.stringify(next));
+  if (FIREBASE_ENABLED) {
+    await setDoc(doc(db, 'users', userId), { readNotificationIds: next }, { merge: true });
+  }
+};
+
+const normalizeNotification = (item: any, readIds: Set<string>): any => {
+  const createdAt = item.createdAt?.toDate?.().toISOString?.() || item.createdAt || new Date().toISOString();
+  const id = item.id || `${item.userId || 'user'}_${createdAt}_${item.title || 'notification'}`;
+  return {
+    ...item,
+    id,
+    createdAt,
+    time: item.time || new Date(createdAt).toLocaleString('ar-EG'),
+    read: Boolean(item.read || readIds.has(id)),
+  };
+};
+
+const parseAppointmentTimestamp = (appointment: Pick<Appointment, 'date' | 'time'>): number => {
+  const candidates = [
+    `${appointment.date} ${appointment.time}`,
+    appointment.date,
+  ];
+  for (const candidate of candidates) {
+    const parsed = Date.parse(candidate);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return 0;
+};
+
+const getAppointmentReminderNotifications = async (userId: string, readIds: Set<string>): Promise<any[]> => {
+  const users = await getAllUsers();
+  const currentUser = users.find((item) => item.uid === userId);
+  const appointments = currentUser?.role === 'doctor'
+    ? await getDoctorAppointments(userId)
+    : await getUserAppointments(userId);
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  return appointments
+    .filter((appointment: any) => appointment.status === 'قادم')
+    .map((appointment: any) => {
+      const timestamp = parseAppointmentTimestamp(appointment);
+      if (!timestamp || timestamp < now || timestamp - now > oneDay) return null;
+      const id = `appointment_reminder_${userId}_${appointment.id}`;
+      return {
+        id,
+        userId,
+        title: 'موعدك اقترب',
+        desc: currentUser?.role === 'doctor'
+          ? `موعدك مع ${appointment.patientName || 'مريض'} يوم ${appointment.date} الساعة ${appointment.time}`
+          : `موعدك مع ${appointment.doctorName || 'الطبيب'} يوم ${appointment.date} الساعة ${appointment.time}`,
+        time: new Date(timestamp).toLocaleString('ar-EG'),
+        icon: 'clock',
+        color: COLORS.primaryLight,
+        read: readIds.has(id),
+        createdAt: new Date(timestamp - oneDay).toISOString(),
+        appointmentId: appointment.id,
+        targetScreen: currentUser?.role === 'doctor' ? 'DoctorDashboard' : 'المواعيد',
+      };
+    })
+    .filter(Boolean);
+};
+
+export const getUserNotifications = async (userId: string): Promise<any[]> => {
+  const readIds = await getReadNotificationIds(userId);
+  const mergedNotifications: any[] = [];
+
+  if (FIREBASE_ENABLED) {
     try {
       const snap = await getDocs(query(collection(db, 'notifications'), where('userId', '==', userId), orderBy('createdAt', 'desc')));
-      const firebaseNotifications = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const firebaseNotifications = snap.docs.map((d) => ({ firestoreDocId: d.id, ...d.data() }));
       mergedNotifications.push(...firebaseNotifications);
     } catch (error) {
       console.error('Firebase getUserNotifications error:', error);
@@ -1350,22 +1463,63 @@ export const getUserNotifications = async (userId: string): Promise<any[]> => {
       console.error('Firebase get mirrored notifications error:', error);
     }
 
-    if (mergedNotifications.length > 0) {
-      const unique = new Map<string, any>();
-      mergedNotifications.forEach((item) => unique.set(item.id || `${item.createdAt}_${item.senderId}`, item));
-      return Array.from(unique.values()).sort((a, b) => new Date(b.createdAt || b.time).getTime() - new Date(a.createdAt || a.time).getTime());
-    }
   }
 
   const stored = await AsyncStorage.getItem(`@notifications_${userId}`);
-  if (stored) return JSON.parse(stored);
-  const defaults = [
-    { id: '1', userId, title: 'تذكير بالموعد', desc: 'موعدك مع د. سارة سيبدأ بعد 30 دقيقة.', time: 'منذ قليل', icon: 'clock', color: COLORS.primaryLight, read: false },
-    { id: '2', userId, title: 'نتائج التحاليل', desc: 'تم رفع نتائج تحليل الدم الخاص بك في قسم النتائج.', time: 'منذ ساعتين', icon: 'file-medical', color: COLORS.secondary, read: false },
-    { id: '3', userId, title: 'وصفة طبية جديدة', desc: 'قام د. أوين بإضافة وصفة طبية جديدة لملفك.', time: 'أمس', icon: 'pills', color: COLORS.accentWarm, read: true },
-  ];
-  await AsyncStorage.setItem(`@notifications_${userId}`, JSON.stringify(defaults));
-  return defaults;
+  if (stored) mergedNotifications.push(...JSON.parse(stored));
+
+  const reminders = await getAppointmentReminderNotifications(userId, readIds);
+  mergedNotifications.push(...reminders);
+
+  const unique = new Map<string, any>();
+  mergedNotifications
+    .map((item) => normalizeNotification(item, readIds))
+    .forEach((item) => unique.set(item.id, item));
+
+  return Array.from(unique.values()).sort((a, b) => new Date(b.createdAt || b.time).getTime() - new Date(a.createdAt || a.time).getTime());
+};
+
+export const markUserNotificationsRead = async (userId: string, notificationIds?: string[]): Promise<void> => {
+  const notifications = await getUserNotifications(userId);
+  const idsToRead = notificationIds?.length ? new Set(notificationIds) : new Set(notifications.map((item) => item.id));
+  if (idsToRead.size === 0) return;
+
+  const readIds = await getReadNotificationIds(userId);
+  idsToRead.forEach((id) => readIds.add(id));
+  await persistReadNotificationIds(userId, readIds);
+
+  const stored = await AsyncStorage.getItem(`@notifications_${userId}`);
+  if (stored) {
+    const localNotifications = JSON.parse(stored).map((item: any) => {
+      const id = item.id || `${item.userId || userId}_${item.createdAt || item.time}_${item.title || 'notification'}`;
+      return idsToRead.has(id) ? { ...item, id, read: true } : item;
+    });
+    await AsyncStorage.setItem(`@notifications_${userId}`, JSON.stringify(localNotifications));
+  }
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'notifications'), where('userId', '==', userId)));
+      await Promise.all(snap.docs.map(async (notificationDoc) => {
+        const data = notificationDoc.data() as any;
+        const id = data.id || notificationDoc.id;
+        if (!idsToRead.has(id)) return;
+        await updateDoc(notificationDoc.ref, { read: true });
+      }));
+    } catch (error) {
+      console.error('Firebase mark notifications read error:', error);
+    }
+
+    try {
+      const data = await getUserDocData(userId);
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+      await setDoc(doc(db, 'users', userId), {
+        notifications: notifications.map((item: any) => idsToRead.has(item.id) ? { ...item, read: true } : item),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase mirror mark notifications read error:', error);
+    }
+  }
 };
 
 const getRecipientIdFromChat = (chatId: string, senderId: string, explicitRecipientId?: string): string | undefined => {
@@ -1578,6 +1732,50 @@ export const subscribeUnreadChatCount = (
   };
 };
 
+export const subscribeNotificationSummary = (
+  userId: string | undefined,
+  callback: (summary: NotificationSummary) => void
+): (() => void) => {
+  if (!userId) {
+    callback({ totalUnread: 0, unreadNotifications: 0, unreadChats: 0 });
+    return () => undefined;
+  }
+
+  let disposed = false;
+  let unreadNotifications = 0;
+  let unreadChats = 0;
+
+  const emit = () => {
+    if (!disposed) {
+      callback({
+        unreadNotifications,
+        unreadChats,
+        totalUnread: unreadNotifications + unreadChats,
+      });
+    }
+  };
+
+  const refreshNotifications = async () => {
+    const notifications = await getUserNotifications(userId);
+    unreadNotifications = notifications.filter((item) => !item.read).length;
+    emit();
+  };
+
+  const unsubscribeChats = subscribeUnreadChatCount(userId, (count) => {
+    unreadChats = count;
+    emit();
+  });
+
+  refreshNotifications();
+  const interval = setInterval(refreshNotifications, 4000);
+
+  return () => {
+    disposed = true;
+    clearInterval(interval);
+    unsubscribeChats();
+  };
+};
+
 const mirrorChatToUserDocs = async (
   participantIds: string[],
   chatId: string,
@@ -1630,7 +1828,7 @@ const createAppointmentNotification = async (input: {
   time: string;
   appointmentId: string;
 }): Promise<void> => {
-  const notification = {
+  const doctorNotification = {
     id: `apt_notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     userId: input.doctorId,
     title: `حجز جديد من ${input.patientName || 'مريض'}`,
@@ -1642,30 +1840,50 @@ const createAppointmentNotification = async (input: {
     createdAt: new Date().toISOString(),
     appointmentId: input.appointmentId,
     patientId: input.patientId,
+    targetScreen: 'DoctorDashboard',
   };
+  const patientNotification = {
+    id: `apt_patient_notif_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: input.patientId,
+    title: 'تم تأكيد الحجز',
+    desc: `تم حجز موعدك مع ${input.doctorName || 'الطبيب'} يوم ${input.date} الساعة ${input.time}`,
+    time: new Date().toLocaleString('ar-EG'),
+    icon: 'calendar-check',
+    color: COLORS.secondary,
+    read: false,
+    createdAt: new Date().toISOString(),
+    appointmentId: input.appointmentId,
+    doctorId: input.doctorId,
+    targetScreen: 'المواعيد',
+  };
+  const notifications = [doctorNotification, patientNotification];
 
   if (FIREBASE_ENABLED) {
-    try {
-      await addDoc(collection(db, 'notifications'), {
-        ...notification,
-        createdAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('Firebase appointment notification error:', error);
-    }
+    await Promise.all(notifications.map(async (notification) => {
+      try {
+        await addDoc(collection(db, 'notifications'), {
+          ...notification,
+          createdAt: serverTimestamp(),
+        });
+      } catch (error) {
+        console.error('Firebase appointment notification error:', error);
+      }
+    }));
 
-    try {
-      const data = await getUserDocData(input.doctorId);
-      const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
-      await setDoc(doc(db, 'users', input.doctorId), {
-        notifications: [notification, ...notifications].slice(0, 80),
-      }, { merge: true });
-    } catch (error) {
-      console.error('Firebase appointment notification mirror error:', error);
-    }
+    await Promise.all(notifications.map(async (notification) => {
+      try {
+        const data = await getUserDocData(notification.userId);
+        const existing = Array.isArray(data?.notifications) ? data.notifications : [];
+        await setDoc(doc(db, 'users', notification.userId), {
+          notifications: [notification, ...existing].slice(0, 80),
+        }, { merge: true });
+      } catch (error) {
+        console.error('Firebase appointment notification mirror error:', error);
+      }
+    }));
   }
 
-  await addLocalNotification(input.doctorId, notification);
+  await Promise.all(notifications.map((notification) => addLocalNotification(notification.userId, notification)));
 };
 
 const createChatNotification = async (message: ChatMessageInput): Promise<void> => {
@@ -1683,6 +1901,7 @@ const createChatNotification = async (message: ChatMessageInput): Promise<void> 
     createdAt: message.createdAt,
     chatId: message.chatId,
     senderId: message.senderId,
+    targetScreen: 'ChatList',
   };
 
   if (FIREBASE_ENABLED) {
@@ -1732,6 +1951,7 @@ const createMedicalRecordNotification = async (input: {
     color: input.color,
     read: false,
     createdAt: new Date().toISOString(),
+    targetScreen: input.icon === 'prescription-bottle-alt' ? 'Prescriptions' : 'Results',
   };
 
   if (FIREBASE_ENABLED) {

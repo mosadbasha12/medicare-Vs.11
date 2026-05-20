@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView } from 'react-native';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
@@ -6,6 +6,7 @@ import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-ico
 import { useUser } from '../context/UserContext';
 import { clearSession as logoutFromStorage, getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
 import { useLanguage } from '../context/LanguageContext';
+import { subscribeNotificationSummary } from '../utils/localDataService';
 
 interface ProfileScreenProps {
   navigation: {
@@ -17,6 +18,7 @@ interface ProfileScreenProps {
 export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const { user, setUser } = useUser();
   const { language, t } = useLanguage();
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const profileFields = [
     user?.name,
@@ -45,6 +47,10 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const roleBadgeText = user?.role === 'doctor'
     ? `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role, user?.adminPermissions)}`
     : `${getAccountTypeLabel(user?.role)} • ${getPermissionLabel(user?.role, user?.adminPermissions)}`;
+
+  useEffect(() => subscribeNotificationSummary(user?.uid, (summary) => {
+    setUnreadNotifications(summary.totalUnread);
+  }), [user?.uid]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -175,7 +181,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
              onPress={() => navigation.navigate('Language')}
            />
            <SettingItem icon="palette" label="الثيمات" color={COLORS.primaryLight} onPress={() => navigation.navigate('Theme')} />
-           <SettingItem icon="bell" label={t('notifications')} color={COLORS.danger} onPress={() => navigation.navigate('Notifications')} />
+           <SettingItem icon="bell" label={t('notifications')} color={COLORS.danger} badgeCount={unreadNotifications} onPress={() => navigation.navigate('Notifications')} />
            <SettingItem icon="shield-alt" label={t('privacy')} color={COLORS.textSecondary} onPress={() => navigation.navigate('PrivacySecurity')} />
         </GlassCard>
 
@@ -195,13 +201,18 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   );
 }
 
-const SettingItem = ({ icon, label, color, onPress }: { icon: string; label: string; color: string; onPress?: () => void }) => (
+const SettingItem = ({ icon, label, color, badgeCount = 0, onPress }: { icon: string; label: string; color: string; badgeCount?: number; onPress?: () => void }) => (
   <TouchableOpacity style={styles.settingItem} onPress={onPress}>
     <View style={styles.settingItemLeft}>
       <View style={[styles.iconBox, { backgroundColor: color + '22' }]}>
         <FontAwesome5 name={icon as any} size={16} color={color} />
       </View>
       <Text style={styles.settingLabel}>{label}</Text>
+      {badgeCount > 0 && (
+        <View style={styles.notificationBadge}>
+          <Text style={styles.notificationBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+        </View>
+      )}
     </View>
     <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
   </TouchableOpacity>
@@ -244,6 +255,8 @@ const styles = StyleSheet.create({
   settingItemLeft: { flexDirection: 'row-reverse', alignItems: 'center' },
   iconBox: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginLeft: 12 },
   settingLabel: { color: COLORS.textPrimary, fontSize: 16, fontWeight: '500' },
+  notificationBadge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: COLORS.danger, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  notificationBadgeText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
   logoutBtn: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, backgroundColor: 'rgba(227, 26, 26, 0.1)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(227, 26, 26, 0.3)' },
   logoutText: { color: COLORS.danger, fontSize: 16, fontWeight: 'bold' }
 });
