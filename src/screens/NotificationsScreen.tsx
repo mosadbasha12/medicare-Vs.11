@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { getUserNotifications, markUserNotificationsRead, subscribeNotificationSummary } from '../utils/localDataService';
+import { dismissUserNotifications, getUserNotifications, subscribeNotificationSummary } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function NotificationsScreen({ navigation }: any) {
@@ -19,16 +19,18 @@ export default function NotificationsScreen({ navigation }: any) {
       if (!user?.uid) return;
       const data = await getUserNotifications(user.uid);
       setNotifications(data);
-      const unreadIds = data.filter((item) => !item.read).map((item) => item.id);
-      if (unreadIds.length > 0) {
-        await markUserNotificationsRead(user.uid, unreadIds);
-        setNotifications(data.map((item) => ({ ...item, read: true })));
-      }
     };
     fetchNotifications();
     const timer = setInterval(fetchNotifications, 5000);
     return () => clearInterval(timer);
   }, [user?.uid]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => undefined);
+    }
+  }, []);
 
   useEffect(() => subscribeNotificationSummary(user?.uid, (summary) => {
     setUnreadChats(summary.unreadChats);
@@ -37,8 +39,8 @@ export default function NotificationsScreen({ navigation }: any) {
 
   const navigateFromNotification = async (item: any) => {
     if (user?.uid && item.id) {
-      await markUserNotificationsRead(user.uid, [item.id]);
-      setNotifications((current) => current.map((notification) => notification.id === item.id ? { ...notification, read: true } : notification));
+      await dismissUserNotifications(user.uid, [item.id]);
+      setNotifications((current) => current.filter((notification) => notification.id !== item.id));
     }
 
     if (item.chatId || item.targetScreen === 'ChatList') {

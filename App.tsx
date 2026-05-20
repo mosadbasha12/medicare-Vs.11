@@ -6,6 +6,7 @@ import { UserProvider } from './src/context/UserContext';
 import { LanguageProvider } from './src/context/LanguageContext';
 import AppUpdatePrompt from './src/components/AppUpdatePrompt';
 import AppThemeSync from './src/components/AppThemeSync';
+import AppNotificationSync from './src/components/AppNotificationSync';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <NavigationContainer>
           <StatusBar style="light" />
           <AppThemeSync />
+          <AppNotificationSync />
           <AppNavigator />
           <AppUpdatePrompt />
         </NavigationContainer>

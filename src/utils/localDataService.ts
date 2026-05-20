@@ -1242,12 +1242,49 @@ const getReadNotificationIds = async (userId: string): Promise<Set<string>> => {
   return ids;
 };
 
+const getDismissedNotificationIds = async (userId: string): Promise<Set<string>> => {
+  const ids = new Set<string>();
+  const stored = await AsyncStorage.getItem(`@dismissed_notifications_${userId}`);
+  if (stored) {
+    try {
+      (JSON.parse(stored) as string[]).forEach((id) => ids.add(id));
+    } catch {
+      // Ignore old malformed local state.
+    }
+  }
+  if (FIREBASE_ENABLED) {
+    const data = await getUserDocData(userId);
+    if (Array.isArray(data?.dismissedNotificationIds)) {
+      data.dismissedNotificationIds.forEach((id: string) => ids.add(id));
+    }
+  }
+  return ids;
+};
+
+const persistDismissedNotificationIds = async (userId: string, ids: Set<string>): Promise<void> => {
+  const next = Array.from(ids).slice(-500);
+  await AsyncStorage.setItem(`@dismissed_notifications_${userId}`, JSON.stringify(next));
+  if (FIREBASE_ENABLED) {
+    await setDoc(doc(db, 'users', userId), { dismissedNotificationIds: next }, { merge: true });
+  }
+};
+
 const persistReadNotificationIds = async (userId: string, ids: Set<string>): Promise<void> => {
   const next = Array.from(ids).slice(-300);
   await AsyncStorage.setItem(`@read_notifications_${userId}`, JSON.stringify(next));
   if (FIREBASE_ENABLED) {
     await setDoc(doc(db, 'users', userId), { readNotificationIds: next }, { merge: true });
   }
+};
+
+const inferNotificationTarget = (item: any): string | undefined => {
+  if (item.targetScreen) return item.targetScreen;
+  const text = `${item.title || ''} ${item.desc || ''}`;
+  if (item.chatId || text.includes('رسالة')) return 'ChatList';
+  if (text.includes('وصفة') || text.includes('دواء')) return 'Prescriptions';
+  if (text.includes('تحليل') || text.includes('نتائج') || text.includes('أشعة')) return 'Results';
+  if (text.includes('حجز') || text.includes('موعد')) return item.doctorId ? 'DoctorDashboard' : 'المواعيد';
+  return undefined;
 };
 
 const normalizeNotification = (item: any, readIds: Set<string>): any => {
@@ -1259,6 +1296,7 @@ const normalizeNotification = (item: any, readIds: Set<string>): any => {
     createdAt,
     time: item.time || new Date(createdAt).toLocaleString('ar-EG'),
     read: Boolean(item.read || readIds.has(id)),
+    targetScreen: inferNotificationTarget(item),
   };
 };
 
@@ -1310,6 +1348,7 @@ const getAppointmentReminderNotifications = async (userId: string, readIds: Set<
 
 export const getUserNotifications = async (userId: string): Promise<any[]> => {
   const readIds = await getReadNotificationIds(userId);
+  const dismissedIds = await getDismissedNotificationIds(userId);
   const mergedNotifications: any[] = [];
 
   if (FIREBASE_ENABLED) {
@@ -1339,9 +1378,56 @@ export const getUserNotifications = async (userId: string): Promise<any[]> => {
   const unique = new Map<string, any>();
   mergedNotifications
     .map((item) => normalizeNotification(item, readIds))
+    .filter((item) => !dismissedIds.has(item.id))
     .forEach((item) => unique.set(item.id, item));
 
   return Array.from(unique.values()).sort((a, b) => new Date(b.createdAt || b.time).getTime() - new Date(a.createdAt || a.time).getTime());
+};
+
+export const dismissUserNotifications = async (userId: string, notificationIds: string[]): Promise<void> => {
+  const idsToDismiss = new Set(notificationIds.filter(Boolean));
+  if (idsToDismiss.size === 0) return;
+
+  const dismissedIds = await getDismissedNotificationIds(userId);
+  idsToDismiss.forEach((id) => dismissedIds.add(id));
+  await persistDismissedNotificationIds(userId, dismissedIds);
+
+  const readIds = await getReadNotificationIds(userId);
+  idsToDismiss.forEach((id) => readIds.add(id));
+  await persistReadNotificationIds(userId, readIds);
+
+  const stored = await AsyncStorage.getItem(`@notifications_${userId}`);
+  if (stored) {
+    const localNotifications = JSON.parse(stored).filter((item: any) => {
+      const id = item.id || `${item.userId || userId}_${item.createdAt || item.time}_${item.title || 'notification'}`;
+      return !idsToDismiss.has(id);
+    });
+    await AsyncStorage.setItem(`@notifications_${userId}`, JSON.stringify(localNotifications));
+  }
+
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'notifications'), where('userId', '==', userId)));
+      await Promise.all(snap.docs.map(async (notificationDoc) => {
+        const data = notificationDoc.data() as any;
+        const id = data.id || notificationDoc.id;
+        if (!idsToDismiss.has(id)) return;
+        await deleteDoc(notificationDoc.ref);
+      }));
+    } catch (error) {
+      console.error('Firebase dismiss notifications error:', error);
+    }
+
+    try {
+      const data = await getUserDocData(userId);
+      const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
+      await setDoc(doc(db, 'users', userId), {
+        notifications: notifications.filter((item: any) => !idsToDismiss.has(item.id)),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase mirror dismiss notifications error:', error);
+    }
+  }
 };
 
 export const markUserNotificationsRead = async (userId: string, notificationIds?: string[]): Promise<void> => {
