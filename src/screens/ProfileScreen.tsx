@@ -6,7 +6,7 @@ import { FontAwesome5, Ionicons, MaterialCommunityIcons } from '@expo/vector-ico
 import { useUser } from '../context/UserContext';
 import { clearSession as logoutFromStorage, getAccountTypeLabel, getPermissionLabel } from '../utils/storage';
 import { useLanguage } from '../context/LanguageContext';
-import { subscribeNotificationSummary } from '../utils/localDataService';
+import { getDoctorReviewStats, getDoctorStats, subscribeNotificationSummary } from '../utils/localDataService';
 
 interface ProfileScreenProps {
   navigation: {
@@ -19,6 +19,7 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   const { user, setUser } = useUser();
   const { language, t } = useLanguage();
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [doctorStats, setDoctorStats] = useState({ patients: 0, rating: 0, reviews: 0 });
 
   const profileFields = [
     user?.name,
@@ -51,6 +52,33 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
   useEffect(() => subscribeNotificationSummary(user?.uid, (summary) => {
     setUnreadNotifications(summary.totalUnread);
   }), [user?.uid]);
+
+  useEffect(() => {
+    let active = true;
+    const loadDoctorStats = async () => {
+      if (!user?.uid || user.role !== 'doctor') {
+        if (active) setDoctorStats({ patients: 0, rating: 0, reviews: 0 });
+        return;
+      }
+      const [stats, reviewStats] = await Promise.all([
+        getDoctorStats(user.uid),
+        getDoctorReviewStats(user.uid),
+      ]);
+      if (active) {
+        setDoctorStats({
+          patients: stats.totalPatients,
+          rating: reviewStats.rating,
+          reviews: reviewStats.reviewsCount,
+        });
+      }
+    };
+    loadDoctorStats();
+    const timer = setInterval(loadDoctorStats, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [user?.uid, user?.role]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -130,25 +158,44 @@ export default function ProfileScreen({ navigation }: ProfileScreenProps) {
 
         <View style={styles.statsRow}>
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '120' : consultationsCount}</Text>
-             <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('patient') : t('consultation')}</Text>
+             <Text style={styles.statVal}>{consultationsCount}</Text>
+             <Text style={styles.statLbl}>{t('consultation')}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '4.9' : bloodType}</Text>
-             <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('rating') : t('bloodType')}</Text>
+             <Text style={styles.statVal}>{bloodType}</Text>
+             <Text style={styles.statLbl}>{t('bloodType')}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '8' : weight}</Text>
-             <Text style={styles.statLbl}>{user?.role === 'doctor' ? t('expert') : t('weightKg')}</Text>
+             <Text style={styles.statVal}>{weight && weight > 0 ? weight : '--'}</Text>
+             <Text style={styles.statLbl}>{t('weightKg')}</Text>
            </View>
            <View style={styles.statBoxLine} />
            <View style={styles.statBox}>
-             <Text style={styles.statVal}>{user?.role === 'doctor' ? '--' : age}</Text>
+             <Text style={styles.statVal}>{age && age > 0 ? age : '--'}</Text>
              <Text style={styles.statLbl}>{t('age')}</Text>
            </View>
         </View>
+
+        {user?.role === 'doctor' && (
+          <View style={styles.statsRow}>
+             <View style={styles.statBox}>
+               <Text style={styles.statVal}>{doctorStats.patients}</Text>
+               <Text style={styles.statLbl}>مرضى حجزوا فعلياً</Text>
+             </View>
+             <View style={styles.statBoxLine} />
+             <View style={styles.statBox}>
+               <Text style={styles.statVal}>{doctorStats.reviews > 0 ? doctorStats.rating.toFixed(1) : 'لا يوجد'}</Text>
+               <Text style={styles.statLbl}>التقييم الحقيقي</Text>
+             </View>
+             <View style={styles.statBoxLine} />
+             <View style={styles.statBox}>
+               <Text style={styles.statVal}>{doctorStats.reviews}</Text>
+               <Text style={styles.statLbl}>عدد التقييمات</Text>
+             </View>
+          </View>
+        )}
 
         <Text style={styles.sectionTitle}>{t('accountFinance')}</Text>
         <GlassCard style={styles.card}>
