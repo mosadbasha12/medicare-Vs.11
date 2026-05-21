@@ -4,7 +4,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { FontAwesome5 } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
-import { cancelAppointment, sortAppointmentsByWorkflow, subscribeUserAppointments } from '../utils/localDataService';
+import { cancelAppointment, createVideoCallInviteNotification, sortAppointmentsByWorkflow, subscribeUserAppointments } from '../utils/localDataService';
 import type { Appointment } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -52,8 +52,17 @@ export default function AppointmentsScreen({ navigation }: any) {
     });
   };
 
-  const handleJoin = (item: Appointment) => {
+  const handleJoin = async (item: Appointment) => {
     if (item.type === 'مكالمة فيديو') {
+      await createVideoCallInviteNotification({
+        callerId: user!.uid,
+        callerName: user?.name || 'المريض',
+        recipientId: item.doctorId,
+        appointmentId: item.id,
+        meetingUrl: item.meetingUrl,
+        meetingRoom: item.meetingRoom || `medicare-${item.id}`,
+        participantName: item.doctorName,
+      });
       navigation.navigate('VideoCall', {
         appointmentId: item.id,
         meetingUrl: item.meetingUrl,

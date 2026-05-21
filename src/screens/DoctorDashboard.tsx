@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { createPrescription, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, sortAppointmentsByWorkflow, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
+import { createPrescription, createVideoCallInviteNotification, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, sortAppointmentsByWorkflow, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
 import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
@@ -140,7 +140,16 @@ export default function DoctorDashboard({ navigation }: any) {
     });
   };
 
-  const openVideoCall = (apt: any) => {
+  const openVideoCall = async (apt: any) => {
+    await createVideoCallInviteNotification({
+      callerId: user!.uid,
+      callerName: user?.name || 'الطبيب',
+      recipientId: apt.patientId,
+      appointmentId: apt.id,
+      meetingUrl: apt.meetingUrl,
+      meetingRoom: apt.meetingRoom || `medicare-${apt.id}`,
+      participantName: apt.patientName || 'مريض',
+    });
     navigation.navigate('VideoCall', {
       appointmentId: apt.id,
       meetingUrl: apt.meetingUrl,

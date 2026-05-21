@@ -4,7 +4,7 @@ import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
-import { dismissUserNotifications, getUserNotifications, subscribeNotificationSummary } from '../utils/localDataService';
+import { createVideoCallResponseNotification, dismissUserNotifications, getUserNotifications, subscribeNotificationSummary } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function NotificationsScreen({ navigation }: any) {
@@ -37,12 +37,57 @@ export default function NotificationsScreen({ navigation }: any) {
     setUnreadTotal(summary.totalUnread);
   }), [user?.uid]);
 
-  const navigateFromNotification = async (item: any) => {
+  const dismissNotificationLocally = async (item: any) => {
     if (user?.uid && item.id) {
       await dismissUserNotifications(user.uid, [item.id]);
       setNotifications((current) => current.filter((notification) => notification.id !== item.id));
     }
+  };
 
+  const openVideoCallFromNotification = (item: any) => {
+    navigation.navigate('VideoCall', {
+      appointmentId: item.appointmentId,
+      meetingUrl: item.meetingUrl,
+      meetingRoom: item.meetingRoom || (item.appointmentId ? `medicare-${item.appointmentId}` : undefined),
+      doctorName: item.callerName || item.participantName || 'مكالمة فيديو',
+      participantName: item.callerName || item.participantName || 'مكالمة فيديو',
+    });
+  };
+
+  const acceptVideoCall = async (item: any) => {
+    await dismissNotificationLocally(item);
+    if (item.callerId && user?.uid) {
+      await createVideoCallResponseNotification({
+        callerId: item.callerId,
+        responderId: user.uid,
+        responderName: user.name || 'المستخدم',
+        appointmentId: item.appointmentId,
+        accepted: true,
+      });
+    }
+    openVideoCallFromNotification(item);
+  };
+
+  const rejectVideoCall = async (item: any) => {
+    await dismissNotificationLocally(item);
+    if (item.callerId && user?.uid) {
+      await createVideoCallResponseNotification({
+        callerId: item.callerId,
+        responderId: user.uid,
+        responderName: user.name || 'المستخدم',
+        appointmentId: item.appointmentId,
+        accepted: false,
+      });
+    }
+  };
+
+  const navigateFromNotification = async (item: any) => {
+    await dismissNotificationLocally(item);
+
+    if (item.targetScreen === 'VideoCall') {
+      openVideoCallFromNotification(item);
+      return;
+    }
     if (item.chatId || item.targetScreen === 'ChatList') {
       navigation.navigate('ChatList');
       return;
@@ -90,7 +135,7 @@ export default function NotificationsScreen({ navigation }: any) {
               </GlassCard>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity onPress={() => navigateFromNotification(item)}>
+            <TouchableOpacity onPress={() => item.action === 'video_call_invite' ? acceptVideoCall(item) : navigateFromNotification(item)}>
               <GlassCard style={[styles.card, !item.read && styles.unreadCard]}>
                 <View style={[styles.iconBox, { backgroundColor: item.color + '22' }]}>
                   <FontAwesome5 name={item.icon as any} size={18} color={item.color} />
@@ -104,6 +149,18 @@ export default function NotificationsScreen({ navigation }: any) {
                     </View>
                   </View>
                   <Text style={styles.desc}>{item.desc}</Text>
+                  {item.action === 'video_call_invite' && (
+                    <View style={styles.callActionRow}>
+                      <TouchableOpacity style={[styles.callActionBtn, styles.acceptCallBtn]} onPress={(event: any) => { event?.stopPropagation?.(); acceptVideoCall(item); }}>
+                        <Ionicons name="videocam-outline" size={16} color="#FFF" />
+                        <Text style={styles.callActionText}>قبول المكالمة</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.callActionBtn, styles.rejectCallBtn]} onPress={(event: any) => { event?.stopPropagation?.(); rejectVideoCall(item); }}>
+                        <Ionicons name="close" size={16} color="#FFF" />
+                        <Text style={styles.callActionText}>رفض</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               </GlassCard>
             </TouchableOpacity>
@@ -130,5 +187,10 @@ const styles = StyleSheet.create({
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.danger },
   time: { color: COLORS.textMuted, fontSize: 11 },
   desc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20, textAlign: 'right' },
+  callActionRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 12 },
+  callActionBtn: { flex: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 12 },
+  acceptCallBtn: { backgroundColor: COLORS.secondary },
+  rejectCallBtn: { backgroundColor: COLORS.danger },
+  callActionText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
   emptyText: { color: COLORS.textSecondary, textAlign: 'center', marginTop: 40, fontSize: 16 },
 });

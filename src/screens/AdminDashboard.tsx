@@ -47,6 +47,9 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   chat_attachment_sent: 'إرسال مرفق',
   chat_message_deleted: 'حذف رسالة',
   chat_thread_deleted: 'حذف محادثة',
+  video_call_invite_sent: 'إرسال دعوة مكالمة فيديو',
+  video_call_accepted: 'قبول دعوة مكالمة فيديو',
+  video_call_rejected: 'رفض دعوة مكالمة فيديو',
   user_activated: 'تفعيل حساب',
   user_deactivated: 'تعطيل حساب',
   admin_role_granted: 'منح صلاحية مسؤول',
@@ -101,6 +104,7 @@ const AUDIT_DETAIL_LABELS: Record<string, string> = {
   instapayHandle: 'حساب Instapay',
   themeId: 'الثيم المعتمد',
   targetRole: 'نوع الحساب المتأثر',
+  meetingRoom: 'غرفة المكالمة',
 };
 
 export default function AdminDashboard({ navigation }: any) {

@@ -1543,6 +1543,7 @@ const persistReadNotificationIds = async (userId: string, ids: Set<string>): Pro
 const inferNotificationTarget = (item: any): string | undefined => {
   if (item.targetScreen) return item.targetScreen;
   const text = `${item.title || ''} ${item.desc || ''}`;
+  if (text.includes('مكالمة') || text.includes('فيديو')) return 'VideoCall';
   if (item.chatId || text.includes('رسالة')) return 'ChatList';
   if (text.includes('وصفة') || text.includes('دواء')) return 'Prescriptions';
   if (text.includes('تحليل') || text.includes('نتائج') || text.includes('أشعة')) return 'Results';
@@ -2031,6 +2032,100 @@ const addLocalNotification = async (userId: string, notification: any): Promise<
   const notifications = stored ? JSON.parse(stored) : [];
   notifications.unshift(notification);
   await AsyncStorage.setItem(`@notifications_${userId}`, JSON.stringify(notifications));
+};
+
+const persistNotification = async (notification: any, mirrorLimit = 80): Promise<void> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        ...notification,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Firebase notification error:', error);
+    }
+
+    try {
+      const data = await getUserDocData(notification.userId);
+      const existing = Array.isArray(data?.notifications) ? data.notifications : [];
+      await setDoc(doc(db, 'users', notification.userId), {
+        notifications: [notification, ...existing].slice(0, mirrorLimit),
+      }, { merge: true });
+    } catch (error) {
+      console.error('Firebase notification mirror error:', error);
+    }
+  }
+
+  await addLocalNotification(notification.userId, notification);
+};
+
+export const createVideoCallInviteNotification = async (input: {
+  callerId: string;
+  callerName: string;
+  recipientId: string;
+  appointmentId: string;
+  meetingUrl?: string;
+  meetingRoom?: string;
+  participantName?: string;
+}): Promise<void> => {
+  const notification = {
+    id: `video_call_${input.appointmentId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: input.recipientId,
+    title: 'دعوة مكالمة فيديو',
+    desc: `${input.callerName || 'مستخدم'} بدأ مكالمة فيديو مرتبطة بالحجز. يمكنك قبول الدعوة أو رفضها.`,
+    time: new Date().toLocaleString('ar-EG'),
+    icon: 'video',
+    color: COLORS.primaryLight,
+    read: false,
+    createdAt: new Date().toISOString(),
+    action: 'video_call_invite',
+    callerId: input.callerId,
+    callerName: input.callerName,
+    appointmentId: input.appointmentId,
+    meetingUrl: input.meetingUrl,
+    meetingRoom: input.meetingRoom || `medicare-${input.appointmentId}`,
+    participantName: input.participantName || input.callerName,
+    targetScreen: 'VideoCall',
+  };
+
+  await persistNotification(notification, 80);
+  await recordAuditLog({
+    actorId: input.callerId,
+    action: 'video_call_invite_sent',
+    area: 'مكالمات الفيديو',
+    targetId: input.appointmentId,
+    targetName: input.participantName || input.recipientId,
+    description: `${input.callerName || 'مستخدم'} أرسل دعوة مكالمة فيديو`,
+    details: { recipientId: input.recipientId, meetingRoom: notification.meetingRoom },
+  });
+};
+
+export const createVideoCallResponseNotification = async (input: {
+  callerId: string;
+  responderId: string;
+  responderName: string;
+  appointmentId: string;
+  accepted: boolean;
+}): Promise<void> => {
+  if (!input.callerId || !input.responderId || input.callerId === input.responderId) return;
+  const notification = {
+    id: `video_call_response_${input.appointmentId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    userId: input.callerId,
+    title: input.accepted ? 'تم قبول مكالمة الفيديو' : 'تم رفض مكالمة الفيديو',
+    desc: input.accepted
+      ? `${input.responderName || 'المستخدم'} قبل دعوة مكالمة الفيديو.`
+      : `${input.responderName || 'المستخدم'} رفض دعوة مكالمة الفيديو.`,
+    time: new Date().toLocaleString('ar-EG'),
+    icon: input.accepted ? 'video' : 'phone-slash',
+    color: input.accepted ? COLORS.secondary : COLORS.danger,
+    read: false,
+    createdAt: new Date().toISOString(),
+    action: input.accepted ? 'video_call_accepted' : 'video_call_rejected',
+    appointmentId: input.appointmentId,
+    targetScreen: input.accepted ? 'VideoCall' : undefined,
+  };
+
+  await persistNotification(notification, 80);
 };
 
 const createAppointmentNotification = async (input: {
