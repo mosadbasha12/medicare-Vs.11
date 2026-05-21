@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput, Modal } from 'react-native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { createPrescription, createVideoCallInviteNotification, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, sortAppointmentsByWorkflow, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
-import { getCachedMedicineCatalog, isKnownMedicine, searchMedicineCatalog } from '../utils/medicineCatalog';
+import { addMedicineToCatalog, getCachedMedicineCatalog, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
@@ -397,12 +397,16 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [patientResults, setPatientResults] = useState<LabResult[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [customInstructions, setCustomInstructions] = useState('');
   const [medicineCatalog, setMedicineCatalog] = useState<MedicineCatalogItem[]>([]);
   const [customMedicineName, setCustomMedicineName] = useState('');
   const [customDosage, setCustomDosage] = useState('');
-  const [customTimesPerDay, setCustomTimesPerDay] = useState('1');
-  const [customDurationDays, setCustomDurationDays] = useState('7');
+  const [customCatalogInstructions, setCustomCatalogInstructions] = useState('');
+  const [selectedMedicine, setSelectedMedicine] = useState<MedicineCatalogItem | null>(null);
+  const [prescriptionDosage, setPrescriptionDosage] = useState('');
+  const [prescriptionTimesPerDay, setPrescriptionTimesPerDay] = useState('1');
+  const [prescriptionIntervalHours, setPrescriptionIntervalHours] = useState('24');
+  const [prescriptionDurationDays, setPrescriptionDurationDays] = useState('7');
+  const [prescriptionInstructions, setPrescriptionInstructions] = useState('');
   const [loading, setLoading] = useState(true);
   const [medicineLoading, setMedicineLoading] = useState(false);
 
@@ -479,57 +483,79 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
     };
   }, [searchTerm]);
 
-  const addPrescriptionForPatient = async (medicine: MedicineCatalogItem) => {
+  const openPrescriptionModal = (medicine: MedicineCatalogItem) => {
     if (!selectedPatient?.uid) {
       showInfo('تنبيه', 'اختر مريضاً أولاً من قائمة الحجوزات.');
       return;
     }
+    setSelectedMedicine(medicine);
+    setPrescriptionDosage(medicine.dosage === 'تحدد عند إضافة الدواء للمريض' ? '' : medicine.dosage);
+    setPrescriptionTimesPerDay(String(medicine.timesPerDay || 1));
+    setPrescriptionIntervalHours(medicine.timesPerDay > 0 ? String(Math.max(1, Math.round(24 / medicine.timesPerDay))) : '24');
+    setPrescriptionDurationDays(String(medicine.durationDays || 7));
+    setPrescriptionInstructions(medicine.instructions || '');
+  };
 
-    const totalDoses = medicine.timesPerDay * medicine.durationDays;
+  const addPrescriptionForPatient = async () => {
+    if (!selectedPatient?.uid || !selectedMedicine) {
+      showInfo('تنبيه', 'اختر المريض والدواء أولاً.');
+      return;
+    }
+
+    const times = Math.max(1, Number(prescriptionTimesPerDay.replace(',', '.')) || 1);
+    const intervalHours = Math.max(1, Number(prescriptionIntervalHours.replace(',', '.')) || Math.max(1, Math.round(24 / times)));
+    const days = Math.max(1, Number(prescriptionDurationDays.replace(',', '.')) || 1);
+    const dosage = prescriptionDosage.trim() || 'جرعة يحددها الطبيب';
+    const instructions = prescriptionInstructions.trim() || selectedMedicine.instructions || 'حسب تعليمات الطبيب.';
+    const totalDoses = times * days;
     const saved = await createPrescription({
       userId: selectedPatient.uid,
-      med: medicine.med,
-      dosage: medicine.dosage,
+      med: selectedMedicine.med,
+      dosage,
       doctor: doctorName,
       date: new Date().toLocaleDateString('ar-EG'),
-      frequency: `${medicine.timesPerDay} مرة يومياً لمدة ${medicine.durationDays} يوم`,
-      durationDays: medicine.durationDays,
-      timesPerDay: medicine.timesPerDay,
-      instructions: customInstructions.trim() || medicine.instructions,
+      frequency: `${times} مرة يومياً • كل ${intervalHours} ساعة • لمدة ${days} يوم`,
+      durationDays: days,
+      timesPerDay: times,
+      instructions,
       startDate: new Date().toISOString(),
       totalDoses,
       takenDoses: 0,
     });
 
     if (saved) {
-      showInfo('تم', `تمت إضافة ${medicine.med} إلى وصفات ${selectedPatient.name}.`);
-      setCustomInstructions('');
+      showInfo('تم', `تمت إضافة ${selectedMedicine.med} إلى وصفات ${selectedPatient.name}.`);
+      setSelectedMedicine(null);
+      setPrescriptionDosage('');
+      setPrescriptionTimesPerDay('1');
+      setPrescriptionIntervalHours('24');
+      setPrescriptionDurationDays('7');
+      setPrescriptionInstructions('');
       fetchPrescriptionsData();
     } else {
       showInfo('خطأ', 'تعذر حفظ الوصفة للمريض.');
     }
   };
 
-  const addCustomPrescription = async () => {
+  const addCustomMedicineToCatalog = async () => {
     const cleanName = customMedicineName.trim();
-    if (!isKnownMedicine(cleanName, medicineCatalog)) {
-      showInfo('تنبيه', 'اكتب اسم دواء معروف ظاهر في الكتالوج أو نتيجة البحث أولاً.');
+    if (cleanName.length < 3) {
+      showInfo('تنبيه', 'اكتب اسم الدواء قبل إضافته للكتالوج.');
       return;
     }
-    const times = Math.max(1, Number(customTimesPerDay.replace(',', '.')) || 1);
-    const days = Math.max(1, Number(customDurationDays.replace(',', '.')) || 1);
-    await addPrescriptionForPatient({
+    const nextCatalog = await addMedicineToCatalog({
       med: cleanName,
-      dosage: customDosage.trim() || 'جرعة يحددها الطبيب',
-      timesPerDay: times,
-      durationDays: days,
-      instructions: customInstructions.trim() || 'حسب تعليمات الطبيب.',
+      dosage: customDosage.trim() || 'تحدد عند إضافة الدواء للمريض',
+      timesPerDay: 1,
+      durationDays: 1,
+      instructions: customCatalogInstructions.trim() || 'تحدد التعليمات حسب حالة المريض.',
       source: 'local',
     });
+    setMedicineCatalog(nextCatalog);
     setCustomMedicineName('');
     setCustomDosage('');
-    setCustomTimesPerDay('1');
-    setCustomDurationDays('7');
+    setCustomCatalogInstructions('');
+    showInfo('تم', 'تمت إضافة الدواء إلى الكتالوج. يمكنك الآن إضافته للمريض وتحديد الجرعة المناسبة.');
   };
 
   const openMedicalFile = (item: LabResult) => {
@@ -598,7 +624,7 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
 
       <GlassCard style={styles.medicineTableCard}>
         <Text style={styles.panelTitle}>كتالوج الأدوية والجرعات</Text>
-        <Text style={styles.catalogHint}>الكتالوج يحدث من الإنترنت كل 5 ساعات عند البحث. الدواء المخصص لازم يكون معروفاً في النتائج.</Text>
+        <Text style={styles.catalogHint}>إضافة الدواء هنا تكون للكتالوج فقط. عند إضافة الدواء للمريض ستظهر نافذة لتحديد الجرعة والتكرار حسب الحالة.</Text>
         <TextInput
           style={styles.searchInput}
           value={searchTerm}
@@ -607,67 +633,111 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
           placeholderTextColor={COLORS.textMuted}
         />
         {medicineLoading && <Text style={styles.catalogHint}>جاري تحديث نتائج الأدوية...</Text>}
-        <TextInput
-          style={styles.instructionsInput}
-          value={customInstructions}
-          onChangeText={setCustomInstructions}
-          placeholder="تعليمات إضافية اختيارية للمريض"
-          placeholderTextColor={COLORS.textMuted}
-          multiline
-        />
         <View style={styles.customMedicineBox}>
-          <Text style={styles.subPanelTitle}>إضافة دواء مخصص من كتالوج معروف</Text>
+          <Text style={styles.subPanelTitle}>إضافة دواء جديد إلى الكتالوج</Text>
           <TextInput
             style={styles.searchInput}
             value={customMedicineName}
             onChangeText={setCustomMedicineName}
-            placeholder="اسم الدواء كما ظهر في البحث"
+            placeholder="اسم الدواء"
             placeholderTextColor={COLORS.textMuted}
           />
           <TextInput
             style={styles.searchInput}
             value={customDosage}
             onChangeText={setCustomDosage}
-            placeholder="الجرعة: مثال قرص بعد الأكل"
+            placeholder="وصف عام اختياري: مثال أقراص 500mg"
             placeholderTextColor={COLORS.textMuted}
           />
-          <View style={styles.customDoseRow}>
-            <TextInput
-              style={[styles.searchInput, styles.customDoseInput]}
-              value={customTimesPerDay}
-              onChangeText={setCustomTimesPerDay}
-              placeholder="مرات يومياً"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.searchInput, styles.customDoseInput]}
-              value={customDurationDays}
-              onChangeText={setCustomDurationDays}
-              placeholder="عدد الأيام"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numeric"
-            />
-          </View>
-          <TouchableOpacity style={styles.customMedBtn} onPress={addCustomPrescription}>
+          <TextInput
+            style={styles.instructionsInput}
+            value={customCatalogInstructions}
+            onChangeText={setCustomCatalogInstructions}
+            placeholder="ملاحظات عامة للكتالوج اختيارية"
+            placeholderTextColor={COLORS.textMuted}
+            multiline
+          />
+          <TouchableOpacity style={styles.customMedBtn} onPress={addCustomMedicineToCatalog}>
             <Ionicons name="checkmark-circle-outline" size={17} color="#FFF" />
-            <Text style={styles.customMedText}>إضافة الدواء المخصص</Text>
+            <Text style={styles.customMedText}>إضافة الدواء للكتالوج</Text>
           </TouchableOpacity>
         </View>
         {medicineCatalog.map((medicine) => (
           <View key={medicine.med} style={styles.medicineRow}>
             <View style={styles.medicineInfo}>
               <Text style={styles.prescMed}>{medicine.med}</Text>
-              <Text style={styles.prescDosage}>{medicine.dosage} • {medicine.timesPerDay} مرة يومياً • {medicine.durationDays} يوم</Text>
+              <Text style={styles.prescDosage}>{medicine.dosage}</Text>
               <Text style={styles.medicineInstructions}>{medicine.instructions}{medicine.source && medicine.source !== 'local' ? ` • المصدر: ${medicine.source}` : ''}</Text>
             </View>
-            <TouchableOpacity style={styles.assignMedBtn} onPress={() => addPrescriptionForPatient(medicine)}>
+            <TouchableOpacity style={styles.assignMedBtn} onPress={() => openPrescriptionModal(medicine)}>
               <Ionicons name="add-circle" size={16} color={COLORS.bgBase} />
-              <Text style={styles.assignMedText}>إضافة</Text>
+              <Text style={styles.assignMedText}>إضافة للمريض</Text>
             </TouchableOpacity>
           </View>
         ))}
       </GlassCard>
+
+      <Modal visible={Boolean(selectedMedicine)} transparent animationType="fade" onRequestClose={() => setSelectedMedicine(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.prescriptionModal}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedMedicine(null)}>
+                <Ionicons name="close" size={20} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.modalTitleBox}>
+                <Text style={styles.modalTitle}>إضافة دواء للمريض</Text>
+                <Text style={styles.modalSubTitle}>{selectedMedicine?.med} • {selectedPatient?.name}</Text>
+              </View>
+            </View>
+
+            <TextInput
+              style={styles.searchInput}
+              value={prescriptionDosage}
+              onChangeText={setPrescriptionDosage}
+              placeholder="الجرعة: مثال قرص بعد الأكل"
+              placeholderTextColor={COLORS.textMuted}
+            />
+            <View style={styles.customDoseRow}>
+              <TextInput
+                style={[styles.searchInput, styles.customDoseInput]}
+                value={prescriptionTimesPerDay}
+                onChangeText={setPrescriptionTimesPerDay}
+                placeholder="كام مرة يومياً"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={[styles.searchInput, styles.customDoseInput]}
+                value={prescriptionIntervalHours}
+                onChangeText={setPrescriptionIntervalHours}
+                placeholder="كل كام ساعة"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+            <TextInput
+              style={styles.searchInput}
+              value={prescriptionDurationDays}
+              onChangeText={setPrescriptionDurationDays}
+              placeholder="مدة العلاج بالأيام"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.instructionsInput}
+              value={prescriptionInstructions}
+              onChangeText={setPrescriptionInstructions}
+              placeholder="تعليمات خاصة للمريض"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+            />
+            <TouchableOpacity style={styles.confirmPrescriptionBtn} onPress={addPrescriptionForPatient}>
+              <Ionicons name="checkmark-circle" size={18} color="#FFF" />
+              <Text style={styles.confirmPrescriptionText}>إضافة الدواء للمريض المحدد</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Text style={styles.panelTitle}>وصفات كتبتها مؤخراً</Text>
       {prescriptions.length === 0 ? (
@@ -810,6 +880,15 @@ const styles = StyleSheet.create({
   medicineInstructions: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4, textAlign: 'right' },
   assignMedBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: COLORS.accentWarm, borderRadius: 10, paddingVertical: 9, paddingHorizontal: 12 },
   assignMedText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', alignItems: 'center', justifyContent: 'center', padding: 18 },
+  prescriptionModal: { width: '100%', maxWidth: 560, backgroundColor: COLORS.bgBase, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 18, padding: 16 },
+  modalHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, marginBottom: 12 },
+  modalCloseBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderColor },
+  modalTitleBox: { flex: 1, alignItems: 'flex-start' },
+  modalTitle: { color: COLORS.textPrimary, fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
+  modalSubTitle: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'right' },
+  confirmPrescriptionBtn: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 12 },
+  confirmPrescriptionText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
   prescCard: { padding: 16, marginBottom: 12 },
   prescRow: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 12 },
   prescInfo: { flex: 1, marginLeft: 12 },

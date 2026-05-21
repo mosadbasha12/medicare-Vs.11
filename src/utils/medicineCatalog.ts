@@ -111,6 +111,22 @@ export const searchMedicineCatalog = async (query: string): Promise<MedicineCata
   }
 };
 
+export const addMedicineToCatalog = async (medicine: MedicineCatalogItem): Promise<MedicineCatalogItem[]> => {
+  const current = await getCachedMedicineCatalog();
+  const nextItem: MedicineCatalogItem = {
+    ...medicine,
+    timesPerDay: medicine.timesPerDay || 1,
+    durationDays: medicine.durationDays || 1,
+    dosage: medicine.dosage || 'تحدد عند إضافة الدواء للمريض',
+    instructions: medicine.instructions || 'تحدد التعليمات حسب حالة المريض.',
+    source: medicine.source || 'local',
+    updatedAt: new Date().toISOString(),
+  };
+  const nextItems = uniqueByName([nextItem, ...current]);
+  await AsyncStorage.setItem(MEDICINE_CACHE_KEY, JSON.stringify({ updatedAt: new Date().toISOString(), items: nextItems }));
+  return nextItems;
+};
+
 export const isKnownMedicine = (name: string, catalog: MedicineCatalogItem[]): boolean => {
   const target = normalize(name);
   if (target.length < 3) return false;
