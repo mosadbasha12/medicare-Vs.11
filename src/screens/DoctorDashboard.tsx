@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput, Linking } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Platform, TextInput } from 'react-native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
@@ -141,8 +141,13 @@ export default function DoctorDashboard({ navigation }: any) {
   };
 
   const openVideoCall = (apt: any) => {
-    const room = apt.meetingUrl || `https://meet.jit.si/medicare-${apt.id}`;
-    Linking.openURL(room);
+    navigation.navigate('VideoCall', {
+      appointmentId: apt.id,
+      meetingUrl: apt.meetingUrl,
+      meetingRoom: apt.meetingRoom || `medicare-${apt.id}`,
+      doctorName: apt.patientName || 'مريض',
+      participantName: apt.patientName || 'مريض',
+    });
   };
 
   const handleBack = () => {

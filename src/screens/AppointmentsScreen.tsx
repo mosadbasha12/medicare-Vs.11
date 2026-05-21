@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Platform, Linking } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity, Platform } from 'react-native';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -29,7 +29,7 @@ function showInfo(title: string, message: string) {
   }
 }
 
-export default function AppointmentsScreen() {
+export default function AppointmentsScreen({ navigation }: any) {
   const { user } = useUser();
   const { t } = useLanguage();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -54,8 +54,12 @@ export default function AppointmentsScreen() {
 
   const handleJoin = (item: Appointment) => {
     if (item.type === 'مكالمة فيديو') {
-      const room = item.meetingUrl || `https://meet.jit.si/medicare-${item.id}`;
-      Linking.openURL(room);
+      navigation.navigate('VideoCall', {
+        appointmentId: item.id,
+        meetingUrl: item.meetingUrl,
+        meetingRoom: item.meetingRoom || `medicare-${item.id}`,
+        doctorName: item.doctorName,
+      });
       return;
     }
     showInfo(t('clinicVisit'), `${t('clinicVisitDetails')} ${item.doctorName}\n${t('dateLabel')}: ${item.date}\n${t('timeLabel')}: ${item.time}`);

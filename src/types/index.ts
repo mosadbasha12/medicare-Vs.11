@@ -218,6 +218,7 @@ export type RootStackParamList = {
   Emergency: undefined;
   Admin: undefined;
   DoctorDashboard: undefined;
+  VideoCall: { appointmentId: string; meetingUrl?: string; meetingRoom?: string; doctorName?: string; participantName?: string };
 };
 
 export type TabParamList = {
