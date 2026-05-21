@@ -6,7 +6,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserResults, getUserPrescriptions, subscribeNotificationSummary, subscribeUserAppointments } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
-import { getOfficialHealthNews, type OfficialHealthNewsItem } from '../utils/officialHealthNews';
+import { getOfficialHealthNews, OFFICIAL_HEALTH_NEWS_REFRESH_MS, type OfficialHealthNewsItem } from '../utils/officialHealthNews';
 
 interface HomeScreenProps {
   navigation: {
@@ -16,7 +16,7 @@ interface HomeScreenProps {
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const { user } = useUser();
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [appointmentsCount, setAppointmentsCount] = useState(0);
   const [resultsCount, setResultsCount] = useState(0);
   const [prescriptionsCount, setPrescriptionsCount] = useState(0);
@@ -58,13 +58,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   useEffect(() => {
     let mounted = true;
-    getOfficialHealthNews().then((items) => {
-      if (mounted) setHealthNews(items);
-    });
+    const refreshHealthNews = () => {
+      getOfficialHealthNews(language).then((items) => {
+        if (mounted) setHealthNews(items);
+      });
+    };
+    refreshHealthNews();
+    const timer = setInterval(refreshHealthNews, OFFICIAL_HEALTH_NEWS_REFRESH_MS);
     return () => {
       mounted = false;
+      clearInterval(timer);
     };
-  }, []);
+  }, [language]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -106,12 +111,14 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
               <FontAwesome5 name="shield-virus" size={20} color="#FFF" />
             </View>
             <View style={styles.officialNewsTitleBox}>
-              <Text style={styles.officialNewsTitle}>موجز الصحة الرسمي</Text>
-              <Text style={styles.officialNewsSubtitle}>آخر 3 تحديثات من منظمة الصحة العالمية وجهات الصحة الرسمية</Text>
+              <Text style={styles.officialNewsTitle}>{language === 'ar' ? 'موجز الصحة الرسمي' : 'Official health brief'}</Text>
+              <Text style={styles.officialNewsSubtitle}>
+                {language === 'ar' ? 'أول تحديث من الجهة الصحية الرسمية في بلدك، ثم أحدث تنبيهات منظمة الصحة العالمية' : 'First update from your national health authority, followed by WHO updates'}
+              </Text>
             </View>
           </View>
           {healthNews.length === 0 ? (
-            <Text style={styles.officialNewsLoading}>جاري تحديث المصادر الرسمية...</Text>
+            <Text style={styles.officialNewsLoading}>{language === 'ar' ? 'جاري تحديث المصادر الرسمية...' : 'Refreshing official sources...'}</Text>
           ) : (
             healthNews.slice(0, 3).map((item, index) => (
               <TouchableOpacity key={item.id} style={styles.officialNewsItem} onPress={() => Linking.openURL(item.sourceUrl)}>
