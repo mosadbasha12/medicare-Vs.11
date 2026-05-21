@@ -29,6 +29,80 @@ function showInfo(title: string, message: string) {
   }
 }
 
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  platform_settings_updated: 'تعديل إعدادات المنصة',
+  wallet_credit: 'إضافة رصيد للمحفظة',
+  wallet_debit: 'خصم من المحفظة',
+  wallet_balance_updated: 'تحديث رصيد المحفظة',
+  appointment_created: 'إنشاء حجز',
+  appointment_status_updated: 'تحديث حالة حجز',
+  medical_request_created: 'إضافة طلب ملف طبي',
+  medical_file_uploaded: 'رفع ملف طبي',
+  requested_result_uploaded: 'رفع نتيجة مطلوبة',
+  medical_file_updated: 'تحديث ملف طبي',
+  prescription_created: 'إضافة وصفة طبية',
+  prescription_dose_taken: 'تسجيل جرعة دواء',
+  prescription_supply_added: 'تسجيل كمية دواء جديدة',
+  chat_message_sent: 'إرسال رسالة',
+  chat_attachment_sent: 'إرسال مرفق',
+  chat_message_deleted: 'حذف رسالة',
+  chat_thread_deleted: 'حذف محادثة',
+  user_activated: 'تفعيل حساب',
+  user_deactivated: 'تعطيل حساب',
+  admin_role_granted: 'منح صلاحية مسؤول',
+  admin_role_revoked: 'إلغاء صلاحية مسؤول',
+  admin_permissions_updated: 'تعديل صلاحيات مسؤول',
+  user_deleted: 'حذف حساب',
+  doctor_approved: 'اعتماد طبيب',
+  doctor_rejected: 'رفض طبيب',
+  profile_updated: 'تعديل بيانات حساب',
+  doctor_profile_update_requested: 'طلب تعديل بيانات طبيب',
+  doctor_profile_update_approved: 'اعتماد تعديل بيانات طبيب',
+  doctor_profile_update_rejected: 'رفض تعديل بيانات طبيب',
+};
+
+const AUDIT_DETAIL_LABELS: Record<string, string> = {
+  amount: 'المبلغ',
+  currency: 'العملة',
+  provider: 'طريقة الدفع',
+  status: 'الحالة',
+  appointmentId: 'رقم الحجز',
+  doctorId: 'رقم الطبيب',
+  patientId: 'رقم المريض',
+  type: 'نوع الحجز',
+  price: 'القيمة',
+  platformFee: 'رسوم المنصة',
+  doctorNet: 'صافي الطبيب',
+  date: 'التاريخ',
+  time: 'الوقت',
+  category: 'التصنيف',
+  fileName: 'اسم الملف',
+  dosage: 'الجرعة',
+  timesPerDay: 'عدد المرات يومياً',
+  durationDays: 'مدة العلاج بالأيام',
+  takenDoses: 'الجرعات المسجلة',
+  totalDoses: 'إجمالي الجرعات',
+  refillCount: 'عدد مرات إضافة كمية',
+  chatId: 'رقم المحادثة',
+  recipientId: 'المستلم',
+  attachmentName: 'اسم المرفق',
+  textPreview: 'ملخص الرسالة',
+  messageId: 'رقم الرسالة',
+  participantIds: 'أطراف المحادثة',
+  isActive: 'حالة الحساب',
+  permissions: 'الصلاحيات',
+  role: 'نوع الحساب',
+  email: 'البريد الإلكتروني',
+  medicalId: 'رقم القيد الطبي',
+  fields: 'الحقول المعدلة',
+  balance: 'الرصيد الحالي',
+  previousBalance: 'الرصيد السابق',
+  commissionRate: 'نسبة عمولة المنصة',
+  instapayHandle: 'حساب Instapay',
+  themeId: 'الثيم المعتمد',
+  targetRole: 'نوع الحساب المتأثر',
+};
+
 export default function AdminDashboard({ navigation }: any) {
   const { user, setUser } = useUser();
   const [stats, setStats] = useState({ totalUsers: 0, totalDoctors: 0, totalAppointments: 0, totalPatients: 0, pendingDoctors: 0 });
@@ -51,7 +125,7 @@ export default function AdminDashboard({ navigation }: any) {
     { key: 'users' as const, label: 'الحسابات', visible: canManageUsers },
     { key: 'pending' as const, label: 'طلبات الأطباء', visible: canApproveDoctors },
     { key: 'doctors' as const, label: 'الأطباء', visible: canManageDoctors },
-    { key: 'audit' as const, label: 'التحركات', visible: isOwner },
+    { key: 'audit' as const, label: 'سجل النشاط', visible: isOwner },
     { key: 'settings' as const, label: 'الدفع', visible: isOwner },
     { key: 'themes' as const, label: 'الثيمات', visible: isOwner },
   ].filter((tab) => tab.visible);
@@ -140,7 +214,7 @@ export default function AdminDashboard({ navigation }: any) {
         : `هل تريد إلغاء صلاحية الأدمن من "${target.name}"؟`,
       async () => {
         const success = await setUserAdminPermission(target.uid, makeAdmin, user?.role);
-        showInfo(success ? 'تم' : 'خطأ', success ? 'تم تحديث الصلاحية بنجاح.' : 'فشل تحديث الصلاحية. هذه العملية متاحة للأونر فقط.');
+        showInfo(success ? 'تم' : 'خطأ', success ? 'تم تحديث الصلاحية بنجاح.' : 'فشل تحديث الصلاحية. هذه العملية متاحة لمالك المنصة فقط.');
         fetchData();
       }
     );
@@ -154,7 +228,7 @@ export default function AdminDashboard({ navigation }: any) {
 
     showConfirmation('تعديل صلاحيات الأدمن', `هل تريد تحديث صلاحيات "${target.name}"؟`, async () => {
       const success = await setAdminPermissions(target.uid, next, user?.role);
-      showInfo(success ? 'تم' : 'خطأ', success ? 'تم تحديث صلاحيات الأدمن.' : 'فشل تحديث الصلاحيات. هذه العملية متاحة للأونر فقط.');
+      showInfo(success ? 'تم' : 'خطأ', success ? 'تم تحديث صلاحيات المسؤول.' : 'فشل تحديث الصلاحيات. هذه العملية متاحة لمالك المنصة فقط.');
       fetchData();
     });
   };
@@ -179,7 +253,7 @@ export default function AdminDashboard({ navigation }: any) {
       result === 'success'
         ? 'تم حفظ إعدادات الدفع والعمولة وستظهر عند كل المستخدمين.'
         : result === 'forbidden'
-          ? 'الحفظ متاح للأونر فقط.'
+          ? 'الحفظ متاح لمالك المنصة فقط.'
           : 'فشل حفظ الإعدادات على السيرفر. راجع صلاحيات Firebase لقواعد users/settings.'
     );
   };
@@ -196,7 +270,7 @@ export default function AdminDashboard({ navigation }: any) {
       result === 'success'
         ? 'تم حفظ الثيم. سيتم تطبيقه تلقائياً عند كل المستخدمين.'
         : result === 'forbidden'
-          ? 'حفظ الثيمات متاح للأونر فقط.'
+          ? 'حفظ الثيمات متاح لمالك المنصة فقط.'
           : 'فشل حفظ الثيم على السيرفر. راجع صلاحيات Firebase لقواعد users/settings.'
     );
   };
@@ -229,8 +303,12 @@ export default function AdminDashboard({ navigation }: any) {
     });
   };
 
-  const getRoleLabel = (role: string) => {
-    return getAccountTypeLabel(role);
+  const getRoleLabel = (role?: string) => {
+    if (role === 'owner') return 'مالك المنصة';
+    if (role === 'admin') return 'مسؤول';
+    if (role === 'doctor') return 'طبيب';
+    if (role === 'user') return 'مريض';
+    return role ? getAccountTypeLabel(role) : 'غير محدد';
   };
 
   const getRoleColor = (role: string) => {
@@ -248,12 +326,35 @@ export default function AdminDashboard({ navigation }: any) {
     return new Date(value).toLocaleString('ar-EG');
   };
 
+  const formatAuditValue = (key: string, value: any): string => {
+    if (Array.isArray(value)) return value.map((item) => formatAuditValue(key, item)).join(', ');
+    if (key === 'themeId') return APP_THEMES.find((theme) => theme.id === value)?.name || String(value);
+    if (key === 'permissions') {
+      const labels: Record<string, string> = {
+        approveDoctors: 'اعتماد الأطباء',
+        manageUsers: 'إدارة الحسابات',
+        manageDoctors: 'إدارة الأطباء',
+      };
+      return labels[String(value)] || String(value);
+    }
+    if (key === 'isActive') return value ? 'مفعل' : 'معطل';
+    if (key === 'role' || key === 'targetRole') return getRoleLabel(String(value));
+    return String(value);
+  };
+
   const formatAuditDetails = (details?: Record<string, any>) => {
     if (!details) return '';
     return Object.entries(details)
       .slice(0, 5)
-      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+      .map(([key, value]) => `${AUDIT_DETAIL_LABELS[key] || key}: ${formatAuditValue(key, value)}`)
       .join(' • ');
+  };
+
+  const getAuditActionLabel = (action: string) => AUDIT_ACTION_LABELS[action] || action;
+
+  const getAuditRoleLabel = (log: AuditLogEntry) => {
+    if (isOwner && log.actorId === user?.uid) return 'مالك المنصة';
+    return getRoleLabel(log.actorRole);
   };
 
   return (
@@ -367,7 +468,7 @@ export default function AdminDashboard({ navigation }: any) {
                   <View style={[styles.actionIconBox, { backgroundColor: COLORS.accentWarm + '22' }]}>
                     <MaterialCommunityIcons name="clipboard-text-clock-outline" size={20} color={COLORS.accentWarm} />
                   </View>
-                  <Text style={styles.actionLabel}>سجل تحركات التطبيق</Text>
+                  <Text style={styles.actionLabel}>سجل نشاط المنصة</Text>
                 </View>
                 <View style={styles.actionLeft}>
                   <View style={[styles.badge, { backgroundColor: COLORS.accentWarm }]}>
@@ -402,8 +503,8 @@ export default function AdminDashboard({ navigation }: any) {
           <>
             <View style={styles.auditHeaderRow}>
               <View>
-                <Text style={styles.sectionTitle}>سجل تحركات التطبيق</Text>
-                <Text style={styles.auditHint}>آخر {auditLogs.length} عملية: مين عمل إيه، فين، وإمتى.</Text>
+                <Text style={styles.sectionTitle}>سجل نشاط المنصة</Text>
+                <Text style={styles.auditHint}>آخر {auditLogs.length} إجراء موثق يشمل الحساب المنفذ، القسم، توقيت الإجراء، والحساب أو السجل المتأثر.</Text>
               </View>
               <TouchableOpacity style={styles.refreshAuditBtn} onPress={fetchData}>
                 <Ionicons name="refresh" size={18} color="#FFF" />
@@ -413,8 +514,8 @@ export default function AdminDashboard({ navigation }: any) {
             {auditLogs.length === 0 ? (
               <GlassCard style={styles.noPendingCard}>
                 <MaterialCommunityIcons name="clipboard-text-clock-outline" size={48} color={COLORS.textSecondary} />
-                <Text style={styles.noPendingTitle}>لا يوجد تحركات مسجلة حتى الآن</Text>
-                <Text style={styles.noPendingText}>أي عملية جديدة في التطبيق هتظهر هنا للأونر.</Text>
+                <Text style={styles.noPendingTitle}>لا توجد إجراءات مسجلة حتى الآن</Text>
+                <Text style={styles.noPendingText}>ستظهر هنا الإجراءات الإدارية والتشغيلية الجديدة تلقائياً.</Text>
               </GlassCard>
             ) : (
               auditLogs.map((log) => {
@@ -427,10 +528,10 @@ export default function AdminDashboard({ navigation }: any) {
                       </View>
                       <View style={styles.auditInfo}>
                         <Text style={styles.auditTitle}>{log.description}</Text>
-                        <Text style={styles.auditMeta}>الفاعل: {log.actorName || log.actorId || 'غير معروف'}{log.actorRole ? ` • ${getRoleLabel(log.actorRole)}` : ''}</Text>
-                        <Text style={styles.auditMeta}>المكان: {log.area} • العملية: {log.action}</Text>
+                        <Text style={styles.auditMeta}>الحساب المنفذ: {log.actorName || log.actorId || 'غير معروف'} • {getAuditRoleLabel(log)}</Text>
+                        <Text style={styles.auditMeta}>القسم: {log.area} • نوع الإجراء: {getAuditActionLabel(log.action)}</Text>
                         {log.targetName || log.targetId ? (
-                          <Text style={styles.auditMeta}>المتأثر: {log.targetName || log.targetId}</Text>
+                          <Text style={styles.auditMeta}>السجل المتأثر: {log.targetName || log.targetId}</Text>
                         ) : null}
                       </View>
                       <Text style={styles.auditTime}>{formatDate(log.createdAt)}</Text>
@@ -474,7 +575,7 @@ export default function AdminDashboard({ navigation }: any) {
         {!loading && activeTab === 'themes' && isOwner && (
           <GlassCard style={styles.settingsCard}>
             <Text style={styles.settingsTitle}>ثيمات التطبيق</Text>
-            <Text style={styles.settingsHint}>اختار مجموعة ألوان متناسقة، ولما تحفظ هتتسجل في إعدادات المنصة وتطبق عند كل المستخدمين.</Text>
+            <Text style={styles.settingsHint}>اختر مجموعة ألوان متناسقة، وسيتم حفظها ضمن إعدادات المنصة وتطبيقها على جميع المستخدمين.</Text>
             <View style={styles.themeGrid}>
               {APP_THEMES.map((theme) => {
                 const selected = selectedThemeId === theme.id;
@@ -506,7 +607,7 @@ export default function AdminDashboard({ navigation }: any) {
         {!loading && activeTab === 'users' && canManageUsers && (
           <>
             {users.filter((u) => isOwner ? u.role !== 'owner' : u.role !== 'admin' && u.role !== 'owner').length === 0 ? (
-              <Text style={styles.emptyText}>لا يوجد مستخدمين حالياً</Text>
+              <Text style={styles.emptyText}>لا يوجد مستخدمون حالياً</Text>
             ) : (
               users.filter((u) => isOwner ? u.role !== 'owner' : u.role !== 'admin' && u.role !== 'owner').map((u) => (
                 <GlassCard key={u.uid} style={styles.userCard}>

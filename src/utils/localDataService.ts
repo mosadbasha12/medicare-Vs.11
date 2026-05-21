@@ -185,7 +185,7 @@ const resolveAuditActor = async (actorId?: string): Promise<Partial<AuditLogEntr
       return {
         actorId: actor.uid,
         actorName: actor.name,
-        actorRole: actor.role,
+        actorRole: isOwnerEmail(actor.email || '') ? 'owner' : actor.role,
       };
     }
   } catch {
