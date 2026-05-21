@@ -8,6 +8,17 @@ import { clearSession, getAccountTypeLabel, getPermissionLabel, isOwnerEmail } f
 import { useUser } from '../context/UserContext';
 import type { AdminPermission, AuditLogEntry } from '../types';
 
+const profileUpdateLabels: Record<string, string> = {
+  phone: 'رقم الهاتف',
+  email: 'البريد الإلكتروني',
+  specialty: 'التخصص',
+  medicalId: 'رقم القيد الطبي',
+  nationalId: 'رقم الهوية الوطنية',
+  clinicLocation: 'عنوان العيادة',
+  doctorVideoPrice: 'سعر الاستشارة',
+  doctorClinicPrice: 'سعر زيارة العيادة',
+};
+
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
     if (window.confirm(`${title}\n${message}`)) onConfirm();
@@ -765,7 +776,7 @@ export default function AdminDashboard({ navigation }: any) {
                       </View>
                       <View style={styles.changeBox}>
                         {Object.entries(updates).map(([key, value]) => (
-                          <Text key={key} style={styles.changeText}>{key}: {String(value)}</Text>
+                          <Text key={key} style={styles.changeText}>{profileUpdateLabels[key] || key}: {String(value)}</Text>
                         ))}
                       </View>
                       <View style={styles.pendingActions}>

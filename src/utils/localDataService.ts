@@ -3032,9 +3032,20 @@ export const requestDoctorProfileUpdate = async (
   updates: Partial<AppUser>
 ): Promise<boolean> => {
   try {
+    const approvalFields = new Set([
+      'phone',
+      'email',
+      'specialty',
+      'medicalId',
+      'nationalId',
+      'clinicLocation',
+      'doctorVideoPrice',
+      'doctorClinicPrice',
+    ]);
     const cleanUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([, value]) => value !== undefined)
+      Object.entries(updates).filter(([key, value]) => approvalFields.has(key) && value !== undefined)
     );
+    if (Object.keys(cleanUpdates).length === 0) return true;
     const request = {
       updates: cleanUpdates,
       requestedAt: new Date().toISOString(),

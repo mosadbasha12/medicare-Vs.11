@@ -61,38 +61,50 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
       return;
     }
 
-    const updates = {
+    const immediateUpdates = {
       name: name.trim(),
-      phone: phone.trim(),
       currency,
       ...(showHealthFields ? { weight: parsedWeight, bloodType, age: parsedAge, gender } : {}),
+    };
+    const approvalUpdates = isDoctor ? {
+      phone: phone.trim(),
+      specialty: specialty.trim(),
+      medicalId: medicalId.trim(),
+      nationalId: nationalId.trim(),
+      clinicLocation: clinicLocation.trim(),
+      doctorVideoPrice: doctorVideo,
+      doctorClinicPrice: doctorClinic,
+    } : {};
+    const updates = {
+      ...immediateUpdates,
+      phone: phone.trim(),
       ...(isDoctor ? {
-        specialty: specialty.trim(),
-        medicalId: medicalId.trim(),
-        nationalId: nationalId.trim(),
-        clinicLocation: clinicLocation.trim(),
-        doctorVideoPrice: doctorVideo,
-        doctorClinicPrice: doctorClinic,
+        ...approvalUpdates,
       } : {}),
     };
 
     setLoading(true);
     try {
-      const success = isDoctor
-        ? await requestDoctorProfileUpdate(user, updates)
-        : await updateUserProfile(user.uid, updates);
-      if (success) {
-        if (isDoctor) {
-          const pendingProfileUpdate = { updates, requestedAt: new Date().toISOString(), status: 'pending' as const };
-          setUser({ ...user, pendingProfileUpdate });
-          Alert.alert('تم إرسال الطلب', 'تم إرسال تعديل بيانات الطبيب للأدمن/الأونر للمراجعة. لن تتغير البيانات إلا بعد الموافقة.');
+      if (isDoctor) {
+        const immediateSuccess = await updateUserProfile(user.uid, immediateUpdates);
+        const approvalSuccess = await requestDoctorProfileUpdate(user, approvalUpdates);
+        if (immediateSuccess && approvalSuccess) {
+          const pendingProfileUpdate = { updates: approvalUpdates, requestedAt: new Date().toISOString(), status: 'pending' as const };
+          setUser({ ...user, ...immediateUpdates, pendingProfileUpdate });
+          Alert.alert('تم الحفظ', 'تم تحديث بياناتك الشخصية فوراً، وتم إرسال بيانات الطبيب الحساسة للأدمن/الأونر للمراجعة.');
+          navigation.goBack();
         } else {
+          Alert.alert('خطأ', 'فشل في حفظ بعض التغييرات');
+        }
+      } else {
+        const success = await updateUserProfile(user.uid, updates);
+        if (success) {
           setUser({ ...user, ...updates });
           Alert.alert('نجاح', 'تم حفظ التغييرات بنجاح');
+        } else {
+          Alert.alert('خطأ', 'فشل في حفظ التغييرات');
         }
         navigation.goBack();
-      } else {
-        Alert.alert('خطأ', 'فشل في حفظ التغييرات');
       }
     } catch (error) {
       Alert.alert('خطأ', 'حدث خطأ غير متوقع');
@@ -196,7 +208,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
               <Text style={styles.label}>سعر زيارة العيادة</Text>
               <TextInput style={styles.input} value={doctorClinicPrice} onChangeText={setDoctorClinicPrice} placeholder="60" placeholderTextColor={COLORS.textSecondary} keyboardType="numeric" editable={!loading} />
 
-              <Text style={styles.approvalNote}>تعديلات الطبيب لا تطبق فوراً. سيتم إرسالها للأدمن/الأونر للموافقة أولاً.</Text>
+              <Text style={styles.approvalNote}>بيانات الحساب الشخصية تحفظ فوراً. بيانات الطبيب المهنية ووسائل التواصل تطبق بعد موافقة الأدمن/الأونر.</Text>
             </>
           )}
         </GlassCard>
