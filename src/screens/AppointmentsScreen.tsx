@@ -67,6 +67,7 @@ export default function AppointmentsScreen({ navigation }: any) {
         appointmentId: item.id,
         meetingUrl: item.meetingUrl,
         meetingRoom: item.meetingRoom || `medicare-${item.id}`,
+        initiatorId: user!.uid,
         doctorName: item.doctorName,
       });
       return;

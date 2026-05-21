@@ -49,6 +49,8 @@ export default function NotificationsScreen({ navigation }: any) {
       appointmentId: item.appointmentId,
       meetingUrl: item.meetingUrl,
       meetingRoom: item.meetingRoom || (item.appointmentId ? `medicare-${item.appointmentId}` : undefined),
+      initiatorId: item.callerId,
+      callerId: item.callerId,
       doctorName: item.callerName || item.participantName || 'مكالمة فيديو',
       participantName: item.callerName || item.participantName || 'مكالمة فيديو',
     });

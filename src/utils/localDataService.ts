@@ -146,7 +146,7 @@ const createVideoMeetingFields = (appointmentId: string, type: Appointment['type
   const meetingRoom = `medicare-${appointmentId}`;
   return {
     meetingRoom,
-    meetingUrl: `https://meet.jit.si/${meetingRoom}`,
+    meetingUrl: `medicare-video-call://${meetingRoom}`,
   };
 };
 
@@ -2121,7 +2121,10 @@ export const createVideoCallResponseNotification = async (input: {
     read: false,
     createdAt: new Date().toISOString(),
     action: input.accepted ? 'video_call_accepted' : 'video_call_rejected',
+    callerId: input.callerId,
+    initiatorId: input.callerId,
     appointmentId: input.appointmentId,
+    meetingRoom: `medicare-${input.appointmentId}`,
     targetScreen: input.accepted ? 'VideoCall' : undefined,
   };
 

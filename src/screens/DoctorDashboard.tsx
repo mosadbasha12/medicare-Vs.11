@@ -154,6 +154,7 @@ export default function DoctorDashboard({ navigation }: any) {
       appointmentId: apt.id,
       meetingUrl: apt.meetingUrl,
       meetingRoom: apt.meetingRoom || `medicare-${apt.id}`,
+      initiatorId: user!.uid,
       doctorName: apt.patientName || 'مريض',
       participantName: apt.patientName || 'مريض',
     });
