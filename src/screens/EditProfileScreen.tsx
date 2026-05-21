@@ -33,7 +33,7 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
   const [doctorVideoPrice, setDoctorVideoPrice] = useState(String(user?.doctorVideoPrice ?? 60));
   const [doctorClinicPrice, setDoctorClinicPrice] = useState(String(user?.doctorClinicPrice ?? user?.doctorVideoPrice ?? 60));
   const [loading, setLoading] = useState(false);
-  const showHealthFields = user?.role !== 'doctor';
+  const showHealthFields = Boolean(user);
   const isDoctor = user?.role === 'doctor';
 
   const handleSave = async () => {
@@ -45,11 +45,11 @@ export default function EditProfileScreen({ navigation }: EditProfileScreenProps
 
     const parsedWeight = Number(weight.replace(',', '.'));
     const parsedAge = Number(age.replace(',', '.'));
-    if (showHealthFields && (!Number.isFinite(parsedWeight) || parsedWeight < 0)) {
+    if (!Number.isFinite(parsedWeight) || parsedWeight < 0) {
       Alert.alert('تنبيه', 'الرجاء إدخال وزن صحيح');
       return;
     }
-    if (showHealthFields && (!Number.isInteger(parsedAge) || parsedAge < 0 || parsedAge > 130)) {
+    if (!Number.isInteger(parsedAge) || parsedAge < 0 || parsedAge > 130) {
       Alert.alert('تنبيه', 'الرجاء إدخال عمر صحيح');
       return;
     }
