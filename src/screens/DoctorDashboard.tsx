@@ -5,7 +5,7 @@ import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { createPrescription, createVideoCallInviteNotification, getAllUsers, getDoctorAppointments, getDoctorStats, getUserPrescriptions, getUserResults, getUserTransactions, requestDoctorProfileUpdate, sortAppointmentsByWorkflow, subscribeDoctorAppointments, subscribePlatformSettings, subscribeUnreadChatCount, updateAppointmentStatus } from '../utils/localDataService';
-import { addMedicineToCatalog, getCachedMedicineCatalog, searchMedicineCatalog } from '../utils/medicineCatalog';
+import { addMedicineToCatalog, getCachedMedicineCatalog, removeMedicineFromCatalog, searchMedicineCatalog } from '../utils/medicineCatalog';
 import type { LabResult, MedicineCatalogItem } from '../types';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
@@ -403,9 +403,9 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
   const [customCatalogInstructions, setCustomCatalogInstructions] = useState('');
   const [selectedMedicine, setSelectedMedicine] = useState<MedicineCatalogItem | null>(null);
   const [prescriptionDosage, setPrescriptionDosage] = useState('');
-  const [prescriptionTimesPerDay, setPrescriptionTimesPerDay] = useState('1');
-  const [prescriptionIntervalHours, setPrescriptionIntervalHours] = useState('24');
-  const [prescriptionDurationDays, setPrescriptionDurationDays] = useState('7');
+  const [prescriptionTimesPerDay, setPrescriptionTimesPerDay] = useState('');
+  const [prescriptionIntervalHours, setPrescriptionIntervalHours] = useState('');
+  const [prescriptionDurationDays, setPrescriptionDurationDays] = useState('');
   const [prescriptionInstructions, setPrescriptionInstructions] = useState('');
   const [loading, setLoading] = useState(true);
   const [medicineLoading, setMedicineLoading] = useState(false);
@@ -490,9 +490,9 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
     }
     setSelectedMedicine(medicine);
     setPrescriptionDosage(medicine.dosage === 'تحدد عند إضافة الدواء للمريض' ? '' : medicine.dosage);
-    setPrescriptionTimesPerDay(String(medicine.timesPerDay || 1));
-    setPrescriptionIntervalHours(medicine.timesPerDay > 0 ? String(Math.max(1, Math.round(24 / medicine.timesPerDay))) : '24');
-    setPrescriptionDurationDays(String(medicine.durationDays || 7));
+    setPrescriptionTimesPerDay('');
+    setPrescriptionIntervalHours('');
+    setPrescriptionDurationDays('');
     setPrescriptionInstructions(medicine.instructions || '');
   };
 
@@ -503,8 +503,12 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
     }
 
     const times = Math.max(1, Number(prescriptionTimesPerDay.replace(',', '.')) || 1);
-    const intervalHours = Math.max(1, Number(prescriptionIntervalHours.replace(',', '.')) || Math.max(1, Math.round(24 / times)));
+    const intervalHours = Math.max(1, Number(prescriptionIntervalHours.replace(',', '.')) || 0);
     const days = Math.max(1, Number(prescriptionDurationDays.replace(',', '.')) || 1);
+    if (!prescriptionTimesPerDay.trim() || !prescriptionIntervalHours.trim() || !prescriptionDurationDays.trim()) {
+      showInfo('تنبيه', 'حدد عدد المرات، والفاصل بالساعات، ومدة العلاج قبل إضافة الدواء للمريض.');
+      return;
+    }
     const dosage = prescriptionDosage.trim() || 'جرعة يحددها الطبيب';
     const instructions = prescriptionInstructions.trim() || selectedMedicine.instructions || 'حسب تعليمات الطبيب.';
     const totalDoses = times * days;
@@ -527,9 +531,9 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
       showInfo('تم', `تمت إضافة ${selectedMedicine.med} إلى وصفات ${selectedPatient.name}.`);
       setSelectedMedicine(null);
       setPrescriptionDosage('');
-      setPrescriptionTimesPerDay('1');
-      setPrescriptionIntervalHours('24');
-      setPrescriptionDurationDays('7');
+      setPrescriptionTimesPerDay('');
+      setPrescriptionIntervalHours('');
+      setPrescriptionDurationDays('');
       setPrescriptionInstructions('');
       fetchPrescriptionsData();
     } else {
@@ -556,6 +560,13 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
     setCustomDosage('');
     setCustomCatalogInstructions('');
     showInfo('تم', 'تمت إضافة الدواء إلى الكتالوج. يمكنك الآن إضافته للمريض وتحديد الجرعة المناسبة.');
+  };
+
+  const deleteMedicineFromCatalog = (medicine: MedicineCatalogItem) => {
+    showConfirmation('حذف دواء من الكتالوج', `هل تريد حذف ${medicine.med} من كتالوج الأدوية؟`, async () => {
+      const nextCatalog = await removeMedicineFromCatalog(medicine.med);
+      setMedicineCatalog(nextCatalog);
+    });
   };
 
   const openMedicalFile = (item: LabResult) => {
@@ -673,6 +684,9 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
               <Ionicons name="add-circle" size={16} color={COLORS.bgBase} />
               <Text style={styles.assignMedText}>إضافة للمريض</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={styles.deleteMedBtn} onPress={() => deleteMedicineFromCatalog(medicine)}>
+              <Ionicons name="trash-outline" size={16} color="#FFF" />
+            </TouchableOpacity>
           </View>
         ))}
       </GlassCard>
@@ -698,28 +712,35 @@ function PrescriptionsTab({ doctorId, doctorName, navigation }: { doctorId: stri
               placeholderTextColor={COLORS.textMuted}
             />
             <View style={styles.customDoseRow}>
-              <TextInput
-                style={[styles.searchInput, styles.customDoseInput]}
-                value={prescriptionTimesPerDay}
-                onChangeText={setPrescriptionTimesPerDay}
-                placeholder="كام مرة يومياً"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="numeric"
-              />
-              <TextInput
-                style={[styles.searchInput, styles.customDoseInput]}
-                value={prescriptionIntervalHours}
-                onChangeText={setPrescriptionIntervalHours}
-                placeholder="كل كام ساعة"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="numeric"
-              />
+              <View style={styles.doseField}>
+                <Text style={styles.doseLabel}>عدد الجرعات في اليوم</Text>
+                <TextInput
+                  style={[styles.searchInput, styles.customDoseInput]}
+                  value={prescriptionTimesPerDay}
+                  onChangeText={setPrescriptionTimesPerDay}
+                  placeholder="مثال: 3"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.doseField}>
+                <Text style={styles.doseLabel}>الفاصل بين الجرعات بالساعات</Text>
+                <TextInput
+                  style={[styles.searchInput, styles.customDoseInput]}
+                  value={prescriptionIntervalHours}
+                  onChangeText={setPrescriptionIntervalHours}
+                  placeholder="مثال: 8"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
             </View>
+            <Text style={styles.doseLabel}>مدة العلاج بالأيام</Text>
             <TextInput
               style={styles.searchInput}
               value={prescriptionDurationDays}
               onChangeText={setPrescriptionDurationDays}
-              placeholder="مدة العلاج بالأيام"
+              placeholder="مثال: 3"
               placeholderTextColor={COLORS.textMuted}
               keyboardType="numeric"
             />
@@ -872,6 +893,8 @@ const styles = StyleSheet.create({
   instructionsInput: { minHeight: 58, color: COLORS.textPrimary, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 12, padding: 12, marginBottom: 12, textAlign: 'right', textAlignVertical: 'top' },
   customMedicineBox: { borderTopWidth: 1, borderTopColor: COLORS.borderColor, borderBottomWidth: 1, borderBottomColor: COLORS.borderColor, paddingVertical: 12, marginBottom: 6 },
   customDoseRow: { flexDirection: 'row-reverse', gap: 10 },
+  doseField: { flex: 1 },
+  doseLabel: { color: COLORS.textSecondary, fontSize: 12, fontWeight: 'bold', textAlign: 'right', marginBottom: 6 },
   customDoseInput: { flex: 1 },
   customMedBtn: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: 11 },
   customMedText: { color: '#FFF', fontSize: 13, fontWeight: 'bold' },
@@ -880,6 +903,7 @@ const styles = StyleSheet.create({
   medicineInstructions: { color: COLORS.textMuted, fontSize: 11, lineHeight: 16, marginTop: 4, textAlign: 'right' },
   assignMedBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 5, backgroundColor: COLORS.accentWarm, borderRadius: 10, paddingVertical: 9, paddingHorizontal: 12 },
   assignMedText: { color: COLORS.bgBase, fontSize: 12, fontWeight: 'bold' },
+  deleteMedBtn: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.danger },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', alignItems: 'center', justifyContent: 'center', padding: 18 },
   prescriptionModal: { width: '100%', maxWidth: 560, backgroundColor: COLORS.bgBase, borderWidth: 1, borderColor: COLORS.borderColor, borderRadius: 18, padding: 16 },
   modalHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, marginBottom: 12 },

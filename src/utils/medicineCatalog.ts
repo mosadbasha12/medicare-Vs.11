@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MedicineCatalogItem } from '../types';
 
 const MEDICINE_CACHE_KEY = '@medicine_catalog_cache';
+const MEDICINE_REMOVED_KEY = '@medicine_catalog_removed';
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
 
 export const LOCAL_MEDICINE_CATALOG: MedicineCatalogItem[] = [
@@ -36,6 +37,20 @@ const uniqueByName = (items: MedicineCatalogItem[]): MedicineCatalogItem[] => {
     result.push(item);
   }
   return result;
+};
+
+const getRemovedMedicineNames = async (): Promise<string[]> => {
+  try {
+    const stored = await AsyncStorage.getItem(MEDICINE_REMOVED_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+};
+
+const filterRemoved = (items: MedicineCatalogItem[], removedNames: string[]) => {
+  const removed = new Set(removedNames.map(normalize));
+  return items.filter((item) => !removed.has(normalize(item.med)));
 };
 
 const mapRemoteName = (name: string, source: MedicineCatalogItem['source']): MedicineCatalogItem => ({
@@ -76,12 +91,13 @@ const fetchOpenFdaMedicines = async (query: string): Promise<MedicineCatalogItem
 
 export const getCachedMedicineCatalog = async (): Promise<MedicineCatalogItem[]> => {
   try {
+    const removedNames = await getRemovedMedicineNames();
     const stored = await AsyncStorage.getItem(MEDICINE_CACHE_KEY);
-    if (!stored) return LOCAL_MEDICINE_CATALOG;
+    if (!stored) return filterRemoved(LOCAL_MEDICINE_CATALOG, removedNames);
     const cache: MedicineCache = JSON.parse(stored);
     const age = Date.now() - new Date(cache.updatedAt).getTime();
-    if (age > FIVE_HOURS_MS) return LOCAL_MEDICINE_CATALOG;
-    return uniqueByName([...LOCAL_MEDICINE_CATALOG, ...cache.items]);
+    if (age > FIVE_HOURS_MS) return filterRemoved(LOCAL_MEDICINE_CATALOG, removedNames);
+    return filterRemoved(uniqueByName([...LOCAL_MEDICINE_CATALOG, ...cache.items]), removedNames);
   } catch {
     return LOCAL_MEDICINE_CATALOG;
   }
@@ -103,9 +119,10 @@ export const searchMedicineCatalog = async (query: string): Promise<MedicineCata
       ...(rxNav.status === 'fulfilled' ? rxNav.value : []),
       ...(openFda.status === 'fulfilled' ? openFda.value : []),
     ];
+    const removedNames = await getRemovedMedicineNames();
     const nextItems = uniqueByName([...cached, ...remoteItems]);
     await AsyncStorage.setItem(MEDICINE_CACHE_KEY, JSON.stringify({ updatedAt: new Date().toISOString(), items: nextItems }));
-    return uniqueByName([...localMatches, ...remoteItems]).slice(0, 60);
+    return filterRemoved(uniqueByName([...localMatches, ...remoteItems]), removedNames).slice(0, 60);
   } catch {
     return localMatches.length ? localMatches : cached;
   }
@@ -113,6 +130,8 @@ export const searchMedicineCatalog = async (query: string): Promise<MedicineCata
 
 export const addMedicineToCatalog = async (medicine: MedicineCatalogItem): Promise<MedicineCatalogItem[]> => {
   const current = await getCachedMedicineCatalog();
+  const removedNames = await getRemovedMedicineNames();
+  const nextRemovedNames = removedNames.filter((name) => normalize(name) !== normalize(medicine.med));
   const nextItem: MedicineCatalogItem = {
     ...medicine,
     timesPerDay: medicine.timesPerDay || 1,
@@ -123,8 +142,24 @@ export const addMedicineToCatalog = async (medicine: MedicineCatalogItem): Promi
     updatedAt: new Date().toISOString(),
   };
   const nextItems = uniqueByName([nextItem, ...current]);
+  await AsyncStorage.setItem(MEDICINE_REMOVED_KEY, JSON.stringify(nextRemovedNames));
   await AsyncStorage.setItem(MEDICINE_CACHE_KEY, JSON.stringify({ updatedAt: new Date().toISOString(), items: nextItems }));
   return nextItems;
+};
+
+export const removeMedicineFromCatalog = async (medicineName: string): Promise<MedicineCatalogItem[]> => {
+  const cleanName = medicineName.trim();
+  if (!cleanName) return getCachedMedicineCatalog();
+  const removedNames = await getRemovedMedicineNames();
+  const nextRemovedNames = Array.from(new Set([...removedNames, cleanName]));
+  const stored = await AsyncStorage.getItem(MEDICINE_CACHE_KEY);
+  if (stored) {
+    const cache: MedicineCache = JSON.parse(stored);
+    const nextItems = cache.items.filter((item) => normalize(item.med) !== normalize(cleanName));
+    await AsyncStorage.setItem(MEDICINE_CACHE_KEY, JSON.stringify({ updatedAt: new Date().toISOString(), items: nextItems }));
+  }
+  await AsyncStorage.setItem(MEDICINE_REMOVED_KEY, JSON.stringify(nextRemovedNames));
+  return getCachedMedicineCatalog();
 };
 
 export const isKnownMedicine = (name: string, catalog: MedicineCatalogItem[]): boolean => {
