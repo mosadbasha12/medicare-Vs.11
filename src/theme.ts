@@ -1,6 +1,18 @@
 import { Dimensions } from 'react-native';
 
-export type ThemeId = 'ruby' | 'ocean' | 'emerald' | 'violet' | 'graphite';
+export type ThemeId =
+  | 'ruby'
+  | 'ocean'
+  | 'emerald'
+  | 'violet'
+  | 'graphite'
+  | 'clinicalLight'
+  | 'midnight'
+  | 'tealCare'
+  | 'roseQuartz'
+  | 'amberClinic'
+  | 'skyPulse'
+  | 'navyGold';
 
 export type AppTheme = {
   id: ThemeId;
@@ -117,6 +129,153 @@ export const APP_THEMES: AppTheme[] = [
       textSecondary: '#D1D5DB',
       textMuted: '#9CA3AF',
       borderColor: 'rgba(252, 211, 77, 0.18)',
+    },
+  },
+  {
+    id: 'clinicalLight',
+    name: 'عيادة فاتحة',
+    preview: ['#F8FAFC', '#2563EB', '#06B6D4', '#16A34A'],
+    colors: {
+      primary: '#2563EB',
+      primaryLight: '#60A5FA',
+      primarySoft: 'rgba(37, 99, 235, 0.16)',
+      primarySofter: 'rgba(37, 99, 235, 0.09)',
+      secondary: '#06B6D4',
+      accentWarm: '#16A34A',
+      danger: '#DC2626',
+      bgBase: '#F8FAFC',
+      bgCard: 'rgba(15, 23, 42, 0.055)',
+      bgSidebar: 'rgba(248, 250, 252, 0.94)',
+      textPrimary: '#0F172A',
+      textSecondary: '#334155',
+      textMuted: '#64748B',
+      borderColor: 'rgba(37, 99, 235, 0.16)',
+    },
+  },
+  {
+    id: 'midnight',
+    name: 'منتصف الليل',
+    preview: ['#050816', '#2563EB', '#22D3EE', '#A78BFA'],
+    colors: {
+      primary: '#2563EB',
+      primaryLight: '#93C5FD',
+      primarySoft: 'rgba(37, 99, 235, 0.22)',
+      primarySofter: 'rgba(37, 99, 235, 0.12)',
+      secondary: '#22D3EE',
+      accentWarm: '#A78BFA',
+      danger: '#F43F5E',
+      bgBase: '#050816',
+      bgCard: 'rgba(255, 255, 255, 0.07)',
+      bgSidebar: 'rgba(5, 8, 22, 0.91)',
+      textPrimary: '#F8FAFC',
+      textSecondary: '#CBD5E1',
+      textMuted: '#94A3B8',
+      borderColor: 'rgba(147, 197, 253, 0.18)',
+    },
+  },
+  {
+    id: 'tealCare',
+    name: 'تركواز رعاية',
+    preview: ['#042F2E', '#0D9488', '#5EEAD4', '#A3E635'],
+    colors: {
+      primary: '#0D9488',
+      primaryLight: '#5EEAD4',
+      primarySoft: 'rgba(13, 148, 136, 0.2)',
+      primarySofter: 'rgba(13, 148, 136, 0.12)',
+      secondary: '#A3E635',
+      accentWarm: '#FACC15',
+      danger: '#F43F5E',
+      bgBase: '#042F2E',
+      bgCard: 'rgba(255, 255, 255, 0.065)',
+      bgSidebar: 'rgba(4, 47, 46, 0.9)',
+      textPrimary: '#F0FDFA',
+      textSecondary: '#B6F2E9',
+      textMuted: '#79CFC3',
+      borderColor: 'rgba(94, 234, 212, 0.18)',
+    },
+  },
+  {
+    id: 'roseQuartz',
+    name: 'روز كوارتز',
+    preview: ['#221018', '#E11D48', '#FDA4AF', '#FBBF24'],
+    colors: {
+      primary: '#E11D48',
+      primaryLight: '#FDA4AF',
+      primarySoft: 'rgba(225, 29, 72, 0.2)',
+      primarySofter: 'rgba(225, 29, 72, 0.12)',
+      secondary: '#FB7185',
+      accentWarm: '#FBBF24',
+      danger: '#BE123C',
+      bgBase: '#221018',
+      bgCard: 'rgba(255, 255, 255, 0.065)',
+      bgSidebar: 'rgba(34, 16, 24, 0.9)',
+      textPrimary: '#FFF7F9',
+      textSecondary: '#F7C3CD',
+      textMuted: '#C98E9C',
+      borderColor: 'rgba(253, 164, 175, 0.18)',
+    },
+  },
+  {
+    id: 'amberClinic',
+    name: 'كهرماني دافئ',
+    preview: ['#1C1205', '#F59E0B', '#FCD34D', '#10B981'],
+    colors: {
+      primary: '#F59E0B',
+      primaryLight: '#FCD34D',
+      primarySoft: 'rgba(245, 158, 11, 0.2)',
+      primarySofter: 'rgba(245, 158, 11, 0.12)',
+      secondary: '#10B981',
+      accentWarm: '#FB923C',
+      danger: '#DC2626',
+      bgBase: '#1C1205',
+      bgCard: 'rgba(255, 255, 255, 0.065)',
+      bgSidebar: 'rgba(28, 18, 5, 0.9)',
+      textPrimary: '#FFFBEB',
+      textSecondary: '#FDECC8',
+      textMuted: '#D7B16F',
+      borderColor: 'rgba(252, 211, 77, 0.18)',
+    },
+  },
+  {
+    id: 'skyPulse',
+    name: 'نبض سماوي',
+    preview: ['#071826', '#0284C7', '#7DD3FC', '#F472B6'],
+    colors: {
+      primary: '#0284C7',
+      primaryLight: '#7DD3FC',
+      primarySoft: 'rgba(2, 132, 199, 0.2)',
+      primarySofter: 'rgba(2, 132, 199, 0.12)',
+      secondary: '#F472B6',
+      accentWarm: '#34D399',
+      danger: '#F43F5E',
+      bgBase: '#071826',
+      bgCard: 'rgba(255, 255, 255, 0.065)',
+      bgSidebar: 'rgba(7, 24, 38, 0.9)',
+      textPrimary: '#F0F9FF',
+      textSecondary: '#BEE6FA',
+      textMuted: '#83B8D3',
+      borderColor: 'rgba(125, 211, 252, 0.18)',
+    },
+  },
+  {
+    id: 'navyGold',
+    name: 'كحلي ذهبي',
+    preview: ['#09111F', '#1D4ED8', '#F59E0B', '#E0F2FE'],
+    colors: {
+      primary: '#1D4ED8',
+      primaryLight: '#93C5FD',
+      primarySoft: 'rgba(29, 78, 216, 0.2)',
+      primarySofter: 'rgba(29, 78, 216, 0.12)',
+      secondary: '#F59E0B',
+      accentWarm: '#FCD34D',
+      danger: '#EF4444',
+      bgBase: '#09111F',
+      bgCard: 'rgba(255, 255, 255, 0.065)',
+      bgSidebar: 'rgba(9, 17, 31, 0.9)',
+      textPrimary: '#F8FAFC',
+      textSecondary: '#C7D2FE',
+      textMuted: '#94A3B8',
+      borderColor: 'rgba(245, 158, 11, 0.2)',
     },
   },
 ];
