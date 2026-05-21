@@ -3,10 +3,10 @@ import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Swi
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { APP_THEMES, COLORS, type ThemeId } from '../theme';
 import { GlassCard } from '../components/GlassCard';
-import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions, getPlatformSettings, updatePlatformSettings, approveDoctorProfileUpdate, rejectDoctorProfileUpdate } from '../utils/localDataService';
+import { getAllUsers, getUserAppointments, getAllDoctors, getPendingDoctors, toggleUserActive, deleteUser, approveDoctor, rejectDoctor, setUserAdminPermission, setAdminPermissions, getPlatformSettings, updatePlatformSettings, approveDoctorProfileUpdate, rejectDoctorProfileUpdate, getAuditLogs } from '../utils/localDataService';
 import { clearSession, getAccountTypeLabel, getPermissionLabel, isOwnerEmail } from '../utils/storage';
 import { useUser } from '../context/UserContext';
-import type { AdminPermission } from '../types';
+import type { AdminPermission, AuditLogEntry } from '../types';
 
 function showConfirmation(title: string, message: string, onConfirm: () => void) {
   if (Platform.OS === 'web') {
@@ -34,7 +34,8 @@ export default function AdminDashboard({ navigation }: any) {
   const [stats, setStats] = useState({ totalUsers: 0, totalDoctors: 0, totalAppointments: 0, totalPatients: 0, pendingDoctors: 0 });
   const [users, setUsers] = useState<any[]>([]);
   const [pendingDoctors, setPendingDoctors] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'settings' | 'themes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'pending' | 'doctors' | 'audit' | 'settings' | 'themes'>('overview');
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [commissionRate, setCommissionRate] = useState('5');
   const [instapayHandle, setInstapayHandle] = useState('medicare@instapay');
   const [selectedThemeId, setSelectedThemeId] = useState<ThemeId>('ruby');
@@ -50,6 +51,7 @@ export default function AdminDashboard({ navigation }: any) {
     { key: 'users' as const, label: 'الحسابات', visible: canManageUsers },
     { key: 'pending' as const, label: 'طلبات الأطباء', visible: canApproveDoctors },
     { key: 'doctors' as const, label: 'الأطباء', visible: canManageDoctors },
+    { key: 'audit' as const, label: 'التحركات', visible: isOwner },
     { key: 'settings' as const, label: 'الدفع', visible: isOwner },
     { key: 'themes' as const, label: 'الثيمات', visible: isOwner },
   ].filter((tab) => tab.visible);
@@ -84,6 +86,10 @@ export default function AdminDashboard({ navigation }: any) {
       });
       setUsers(allUsers);
       setPendingDoctors(pending);
+      if (isOwner) {
+        const logs = await getAuditLogs(150);
+        setAuditLogs(logs);
+      }
       const settings = await getPlatformSettings();
       setCommissionRate(String(settings.commissionRate));
       setInstapayHandle(settings.instapayHandle);
@@ -92,7 +98,7 @@ export default function AdminDashboard({ navigation }: any) {
       console.error('Error fetching admin data:', e);
     }
     setLoading(false);
-  }, []);
+  }, [isOwner]);
 
   useEffect(() => {
     fetchData();
@@ -242,6 +248,14 @@ export default function AdminDashboard({ navigation }: any) {
     return new Date(value).toLocaleString('ar-EG');
   };
 
+  const formatAuditDetails = (details?: Record<string, any>) => {
+    if (!details) return '';
+    return Object.entries(details)
+      .slice(0, 5)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+      .join(' • ');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
@@ -348,6 +362,20 @@ export default function AdminDashboard({ navigation }: any) {
                   <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
                 </View>
               </TouchableOpacity>}
+              {isOwner && <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('audit')}>
+                <View style={styles.actionRight}>
+                  <View style={[styles.actionIconBox, { backgroundColor: COLORS.accentWarm + '22' }]}>
+                    <MaterialCommunityIcons name="clipboard-text-clock-outline" size={20} color={COLORS.accentWarm} />
+                  </View>
+                  <Text style={styles.actionLabel}>سجل تحركات التطبيق</Text>
+                </View>
+                <View style={styles.actionLeft}>
+                  <View style={[styles.badge, { backgroundColor: COLORS.accentWarm }]}>
+                    <Text style={styles.badgeText}>{auditLogs.length}</Text>
+                  </View>
+                  <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
+                </View>
+              </TouchableOpacity>}
               {isOwner && <TouchableOpacity style={[styles.actionItem, { borderBottomWidth: 0 }]} onPress={() => setActiveTab('settings')}>
                 <View style={styles.actionRight}>
                   <View style={[styles.actionIconBox, { backgroundColor: COLORS.danger + '22' }]}>
@@ -367,6 +395,51 @@ export default function AdminDashboard({ navigation }: any) {
                 <Ionicons name="chevron-back" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>}
             </GlassCard>
+          </>
+        )}
+
+        {!loading && activeTab === 'audit' && isOwner && (
+          <>
+            <View style={styles.auditHeaderRow}>
+              <View>
+                <Text style={styles.sectionTitle}>سجل تحركات التطبيق</Text>
+                <Text style={styles.auditHint}>آخر {auditLogs.length} عملية: مين عمل إيه، فين، وإمتى.</Text>
+              </View>
+              <TouchableOpacity style={styles.refreshAuditBtn} onPress={fetchData}>
+                <Ionicons name="refresh" size={18} color="#FFF" />
+                <Text style={styles.refreshAuditText}>تحديث</Text>
+              </TouchableOpacity>
+            </View>
+            {auditLogs.length === 0 ? (
+              <GlassCard style={styles.noPendingCard}>
+                <MaterialCommunityIcons name="clipboard-text-clock-outline" size={48} color={COLORS.textSecondary} />
+                <Text style={styles.noPendingTitle}>لا يوجد تحركات مسجلة حتى الآن</Text>
+                <Text style={styles.noPendingText}>أي عملية جديدة في التطبيق هتظهر هنا للأونر.</Text>
+              </GlassCard>
+            ) : (
+              auditLogs.map((log) => {
+                const detailText = formatAuditDetails(log.details);
+                return (
+                  <GlassCard key={log.id} style={styles.auditCard}>
+                    <View style={styles.auditTopRow}>
+                      <View style={[styles.auditIconBox, { backgroundColor: COLORS.accentWarm + '22' }]}>
+                        <MaterialCommunityIcons name="clipboard-text-clock-outline" size={20} color={COLORS.accentWarm} />
+                      </View>
+                      <View style={styles.auditInfo}>
+                        <Text style={styles.auditTitle}>{log.description}</Text>
+                        <Text style={styles.auditMeta}>الفاعل: {log.actorName || log.actorId || 'غير معروف'}{log.actorRole ? ` • ${getRoleLabel(log.actorRole)}` : ''}</Text>
+                        <Text style={styles.auditMeta}>المكان: {log.area} • العملية: {log.action}</Text>
+                        {log.targetName || log.targetId ? (
+                          <Text style={styles.auditMeta}>المتأثر: {log.targetName || log.targetId}</Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.auditTime}>{formatDate(log.createdAt)}</Text>
+                    </View>
+                    {detailText ? <Text style={styles.auditDetails}>{detailText}</Text> : null}
+                  </GlassCard>
+                );
+              })
+            )}
           </>
         )}
 
@@ -679,6 +752,18 @@ const styles = StyleSheet.create({
   pendingAlert: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.accentWarm + '18', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: COLORS.accentWarm + '44' },
   pendingAlertRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   pendingAlertText: { color: COLORS.accentWarm, fontSize: 14, fontWeight: 'bold' },
+  auditHeaderRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 12 },
+  auditHint: { color: COLORS.textSecondary, fontSize: 12, textAlign: 'right', marginTop: -8, marginBottom: 10 },
+  refreshAuditBtn: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9 },
+  refreshAuditText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+  auditCard: { padding: 14, marginBottom: 12 },
+  auditTopRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 10 },
+  auditIconBox: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  auditInfo: { flex: 1 },
+  auditTitle: { color: COLORS.textPrimary, fontSize: 14, fontWeight: 'bold', textAlign: 'right', lineHeight: 20 },
+  auditMeta: { color: COLORS.textSecondary, fontSize: 11, textAlign: 'right', marginTop: 3 },
+  auditTime: { color: COLORS.textMuted, fontSize: 10, maxWidth: 118, textAlign: 'left', lineHeight: 16 },
+  auditDetails: { color: COLORS.accentWarm, fontSize: 11, textAlign: 'right', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.borderColor, lineHeight: 17 },
   managementCard: { padding: 10, marginBottom: 24 },
   actionItem: { flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: COLORS.borderColor },
   actionRight: { flexDirection: 'row-reverse', alignItems: 'center' },

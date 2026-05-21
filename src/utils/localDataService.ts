@@ -11,6 +11,7 @@ import {
   getDoc,
   getDocs,
   increment,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -20,7 +21,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
-import type { AppUser, Currency } from '../types';
+import type { AppUser, AuditLogEntry, Currency } from '../types';
 import { isOwnerEmail } from './storage';
 
 const FIREBASE_ENABLED = Boolean(
@@ -133,6 +134,7 @@ export type PaidAppointmentResult =
 
 const PLATFORM_SETTINGS_KEY = '@platform_settings';
 const PLATFORM_BALANCE_KEY = '@platform_balance';
+const AUDIT_LOG_KEY = '@audit_logs';
 const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
   commissionRate: 5,
   instapayHandle: 'medicare@instapay',
@@ -157,6 +159,108 @@ const normalizePlatformSettings = (settings?: Partial<PlatformSettings> | null):
 const findOwnerUser = async (): Promise<any | null> => {
   const users = await getAllUsers();
   return users.find((u: any) => u.role === 'owner' || isOwnerEmail(u.email || '')) || null;
+};
+
+const cleanAuditDetails = (details?: Record<string, any>): Record<string, any> | undefined => {
+  if (!details) return undefined;
+  const cleaned: Record<string, any> = {};
+  Object.entries(details).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' && value.length > 180) {
+      cleaned[key] = `${value.slice(0, 180)}...`;
+      return;
+    }
+    cleaned[key] = value;
+  });
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+};
+
+const resolveAuditActor = async (actorId?: string): Promise<Partial<AuditLogEntry>> => {
+  const fallbackId = actorId || auth.currentUser?.uid;
+  if (!fallbackId) return {};
+  try {
+    const users = await getAllUsers();
+    const actor = users.find((item) => item.uid === fallbackId);
+    if (actor) {
+      return {
+        actorId: actor.uid,
+        actorName: actor.name,
+        actorRole: actor.role,
+      };
+    }
+  } catch {
+    // Audit logging should never block the action itself.
+  }
+  return { actorId: fallbackId };
+};
+
+export const recordAuditLog = async (input: Omit<AuditLogEntry, 'id' | 'createdAt'>): Promise<void> => {
+  try {
+    const createdAt = new Date().toISOString();
+    const actor = await resolveAuditActor(input.actorId);
+    const entry: AuditLogEntry = {
+      ...input,
+      ...actor,
+      actorName: input.actorName || actor.actorName,
+      actorRole: input.actorRole || actor.actorRole,
+      id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      createdAt,
+      details: cleanAuditDetails(input.details),
+    };
+
+    if (FIREBASE_ENABLED) {
+      try {
+        const { id, ...payload } = entry;
+        const docRef = await addDoc(collection(db, 'auditLogs'), {
+          ...payload,
+          createdAt,
+          createdAtServer: serverTimestamp(),
+        });
+        entry.id = docRef.id;
+      } catch (error) {
+        console.error('Firebase audit log error:', error);
+      }
+    }
+
+    const stored = await AsyncStorage.getItem(AUDIT_LOG_KEY);
+    const logs: AuditLogEntry[] = stored ? JSON.parse(stored) : [];
+    logs.unshift(entry);
+    await AsyncStorage.setItem(AUDIT_LOG_KEY, JSON.stringify(logs.slice(0, 300)));
+  } catch (error) {
+    console.error('recordAuditLog error:', error);
+  }
+};
+
+export const getAuditLogs = async (max = 120): Promise<AuditLogEntry[]> => {
+  if (FIREBASE_ENABLED) {
+    try {
+      const snap = await getDocs(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(max)));
+      return snap.docs.map((item) => {
+        const data = item.data() as any;
+        return {
+          id: item.id,
+          actorId: data.actorId,
+          actorName: data.actorName,
+          actorRole: data.actorRole,
+          action: data.action,
+          area: data.area,
+          targetId: data.targetId,
+          targetName: data.targetName,
+          description: data.description,
+          details: data.details,
+          createdAt: data.createdAt?.toDate?.().toISOString?.() || data.createdAt || data.createdAtServer?.toDate?.().toISOString?.() || new Date().toISOString(),
+        } as AuditLogEntry;
+      });
+    } catch (error) {
+      console.error('Firebase getAuditLogs error:', error);
+    }
+  }
+
+  const stored = await AsyncStorage.getItem(AUDIT_LOG_KEY);
+  const logs: AuditLogEntry[] = stored ? JSON.parse(stored) : [];
+  return logs
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, max);
 };
 
 const formatTransactionDate = (isoDate: string): string => {
@@ -194,6 +298,21 @@ export const recordWalletTransaction = async (input: TransactionInput): Promise<
     const transactions: Transaction[] = stored ? JSON.parse(stored) : [];
     transactions.unshift(transaction);
     await AsyncStorage.setItem(`@transactions_${input.userId}`, JSON.stringify(transactions));
+    await recordAuditLog({
+      actorId: input.userId,
+      action: input.type === 'in' ? 'wallet_credit' : 'wallet_debit',
+      area: 'المحفظة والمعاملات',
+      targetId: transaction.id,
+      targetName: transaction.title,
+      description: `${transaction.title} بقيمة ${transaction.amount} ${transaction.currency || ''}`,
+      details: {
+        amount: transaction.amount,
+        currency: transaction.currency,
+        provider: transaction.provider,
+        status: transaction.status,
+        appointmentId: transaction.appointmentId,
+      },
+    });
     return transaction;
   } catch (error) {
     console.error('recordWalletTransaction error:', error);
@@ -495,6 +614,15 @@ export const updatePlatformSettings = async (
       }
     }
     await AsyncStorage.setItem(PLATFORM_SETTINGS_KEY, JSON.stringify(cleanSettings));
+    await recordAuditLog({
+      actorId: actorUid,
+      action: 'platform_settings_updated',
+      area: 'إعدادات النظام',
+      targetId: 'settings/platform',
+      targetName: 'إعدادات الدفع والثيم',
+      description: 'تم تعديل إعدادات المنصة',
+      details: cleanSettings,
+    });
     return FIREBASE_ENABLED && !savedToFirebase ? 'failed' : 'success';
   } catch (error) {
     console.error('updatePlatformSettings error:', error);
@@ -631,6 +759,22 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
         time: apt.time,
         appointmentId: appointmentRef.id,
       });
+      await recordAuditLog({
+        actorId: apt.userId,
+        action: 'appointment_created',
+        area: 'الحجوزات',
+        targetId: appointmentRef.id,
+        targetName: apt.doctorName,
+        description: `${patient?.name || 'مريض'} حجز موعد مع ${apt.doctorName} يوم ${apt.date} الساعة ${apt.time}`,
+        details: {
+          doctorId: apt.doctorId,
+          patientId: apt.userId,
+          type: apt.type,
+          price: apt.price,
+          platformFee,
+          doctorNet,
+        },
+      });
       return { status: 'success', updatedUser, platformFee, doctorNet };
     }
 
@@ -697,6 +841,22 @@ export const createPaidAppointment = async (apt: PaidAppointmentInput): Promise<
       date: apt.date,
       time: apt.time,
       appointmentId: newApt.id,
+    });
+    await recordAuditLog({
+      actorId: apt.userId,
+      action: 'appointment_created',
+      area: 'الحجوزات',
+      targetId: newApt.id,
+      targetName: apt.doctorName,
+      description: `${users[patientIdx].name || 'مريض'} حجز موعد مع ${apt.doctorName} يوم ${apt.date} الساعة ${apt.time}`,
+      details: {
+        doctorId: apt.doctorId,
+        patientId: apt.userId,
+        type: apt.type,
+        price: apt.price,
+        platformFee,
+        doctorNet,
+      },
     });
     const { password, ...updatedUser } = users[patientIdx];
     return { status: 'success', updatedUser, platformFee, doctorNet };
@@ -940,6 +1100,15 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
         time: apt.time,
         appointmentId: appointmentRef.id,
       });
+      await recordAuditLog({
+        actorId: apt.userId,
+        action: 'appointment_created',
+        area: 'الحجوزات',
+        targetId: appointmentRef.id,
+        targetName: apt.doctorName,
+        description: `${patient?.name || 'مريض'} أنشأ حجز مع ${apt.doctorName}`,
+        details: { doctorId: apt.doctorId, date: apt.date, time: apt.time, type: apt.type },
+      });
       return true;
     } catch (error) {
       console.error('Firebase createAppointment error:', error);
@@ -965,6 +1134,15 @@ export const createAppointment = async (apt: Omit<Appointment, 'id'>): Promise<b
     time: apt.time,
     appointmentId: localAppointmentId,
   });
+  await recordAuditLog({
+    actorId: userId,
+    action: 'appointment_created',
+    area: 'الحجوزات',
+    targetId: localAppointmentId,
+    targetName: apt.doctorName,
+    description: `${patient?.name || 'مريض'} أنشأ حجز مع ${apt.doctorName}`,
+    details: { doctorId: apt.doctorId, date: apt.date, time: apt.time, type: apt.type },
+  });
   return true;
 };
 
@@ -972,6 +1150,14 @@ export const updateAppointmentStatus = async (aptId: string, userId: string, sta
   if (FIREBASE_ENABLED) {
     try {
       await updateDoc(doc(db, 'appointments', aptId), { status });
+      await recordAuditLog({
+        actorId: userId,
+        action: 'appointment_status_updated',
+        area: 'الحجوزات',
+        targetId: aptId,
+        description: `تم تغيير حالة الموعد إلى ${status}`,
+        details: { status },
+      });
       return true;
     } catch (error) {
       console.error('Firebase updateAppointmentStatus error:', error);
@@ -986,6 +1172,15 @@ export const updateAppointmentStatus = async (aptId: string, userId: string, sta
   if (idx === -1) return false;
   appointments[idx].status = status;
   await AsyncStorage.setItem(`@appointments_${userId}`, JSON.stringify(appointments));
+  await recordAuditLog({
+    actorId: userId,
+    action: 'appointment_status_updated',
+    area: 'الحجوزات',
+    targetId: aptId,
+    targetName: appointments[idx]?.doctorName,
+    description: `تم تغيير حالة الموعد إلى ${status}`,
+    details: { status },
+  });
   return true;
 };
 
@@ -1047,6 +1242,23 @@ export const createUserResult = async (result: Omit<LabResult, 'id'>): Promise<L
         color: COLORS.accentWarm,
       });
     }
+    await recordAuditLog({
+      actorId: result.doctorId || result.userId,
+      action: result.doctorId ? 'medical_request_created' : 'medical_file_uploaded',
+      area: 'الملفات الطبية',
+      targetId: newResult.id,
+      targetName: newResult.name,
+      description: result.doctorId
+        ? `${result.doctorName || 'طبيب'} طلب ${result.name} للمريض`
+        : `تم رفع ملف طبي: ${result.name}`,
+      details: {
+        patientId: result.userId,
+        doctorId: result.doctorId,
+        category: result.category,
+        status: result.status,
+        fileName: result.fileName,
+      },
+    });
     return newResult;
   } catch {
     return null;
@@ -1089,6 +1301,23 @@ export const updateUserResult = async (
         targetScreen: 'DoctorDashboard',
       });
     }
+    await recordAuditLog({
+      actorId: userId,
+      action: nextResult.fileData && !previous.fileData ? 'requested_result_uploaded' : 'medical_file_updated',
+      area: 'الملفات الطبية',
+      targetId: nextResult.id,
+      targetName: nextResult.name,
+      description: nextResult.fileData && !previous.fileData
+        ? `المريض رفع نتيجة مطلوبة: ${nextResult.name}`
+        : `تم تعديل ملف طبي: ${nextResult.name}`,
+      details: {
+        patientId: userId,
+        doctorId: previous.doctorId,
+        category: nextResult.category,
+        status: nextResult.status,
+        fileName: nextResult.fileName,
+      },
+    });
 
     return nextResult;
   } catch (error) {
@@ -1136,6 +1365,19 @@ export const createPrescription = async (prescription: Omit<Prescription, 'id'>)
       icon: 'prescription-bottle-alt',
       color: COLORS.secondary,
     });
+    await recordAuditLog({
+      action: 'prescription_created',
+      area: 'الوصفات الطبية',
+      targetId: newPrescription.id,
+      targetName: newPrescription.med,
+      description: `${prescription.doctor || 'طبيب'} أضاف وصفة ${prescription.med} للمريض`,
+      details: {
+        patientId: userId,
+        dosage: prescription.dosage,
+        timesPerDay: prescription.timesPerDay,
+        durationDays: prescription.durationDays,
+      },
+    });
     return newPrescription;
   } catch {
     return null;
@@ -1159,6 +1401,15 @@ export const markPrescriptionDoseTaken = async (userId: string, prescriptionId: 
       await setDoc(doc(db, 'users', userId), { prescriptions }, { merge: true });
     }
     await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(prescriptions));
+    await recordAuditLog({
+      actorId: userId,
+      action: 'prescription_dose_taken',
+      area: 'الوصفات الطبية',
+      targetId: prescriptionId,
+      targetName: prescriptions[idx].med,
+      description: `المريض سجل جرعة مأخوذة من ${prescriptions[idx].med}`,
+      details: { takenDoses: prescriptions[idx].takenDoses, totalDoses: prescriptions[idx].totalDoses },
+    });
     return prescriptions[idx];
   } catch {
     return null;
@@ -1185,6 +1436,18 @@ export const addPrescriptionSupply = async (userId: string, prescriptionId: stri
       await setDoc(doc(db, 'users', userId), { prescriptions }, { merge: true });
     }
     await AsyncStorage.setItem(`@prescriptions_${userId}`, JSON.stringify(prescriptions));
+    await recordAuditLog({
+      actorId: userId,
+      action: 'prescription_supply_added',
+      area: 'الوصفات الطبية',
+      targetId: prescriptionId,
+      targetName: prescriptions[idx].med,
+      description: `المريض أضاف كمية جديدة من ${prescriptions[idx].med}`,
+      details: {
+        refillCount: prescriptions[idx].refillCount,
+        totalDoses: prescriptions[idx].totalDoses,
+      },
+    });
     return prescriptions[idx];
   } catch {
     return null;
@@ -1987,6 +2250,20 @@ export const sendMessage = async (message: ChatMessageInput): Promise<boolean> =
     const mirrored = await mirrorChatToUserDocs(participantIds, chatId, msgs);
     savedToSharedStore = savedToSharedStore || sharedThreadSaved || mirrored || !FIREBASE_ENABLED;
     await createChatNotification(localMessage);
+    await recordAuditLog({
+      actorId: message.senderId,
+      action: message.attachmentName ? 'chat_attachment_sent' : 'chat_message_sent',
+      area: 'المحادثات',
+      targetId: chatId,
+      targetName: message.senderName,
+      description: `${message.senderName || 'مستخدم'} أرسل ${message.attachmentName ? 'مرفق' : 'رسالة'} في المحادثة`,
+      details: {
+        chatId,
+        recipientId,
+        attachmentName: message.attachmentName,
+        textPreview: message.text,
+      },
+    });
     return savedToSharedStore;
   } catch (error) {
     console.error('sendMessage error:', error);
@@ -1999,6 +2276,20 @@ export const sendMessage = async (message: ChatMessageInput): Promise<boolean> =
       const sharedThreadSaved = await saveSharedChatThread(participantIds, chatId, sortedMsgs);
       const mirrored = await mirrorChatToUserDocs(participantIds, chatId, sortedMsgs);
       await createChatNotification(localMessage);
+      await recordAuditLog({
+        actorId: message.senderId,
+        action: message.attachmentName ? 'chat_attachment_sent' : 'chat_message_sent',
+        area: 'المحادثات',
+        targetId: chatId,
+        targetName: message.senderName,
+        description: `${message.senderName || 'مستخدم'} أرسل ${message.attachmentName ? 'مرفق' : 'رسالة'} في المحادثة`,
+        details: {
+          chatId,
+          recipientId,
+          attachmentName: message.attachmentName,
+          textPreview: message.text,
+        },
+      });
       return sharedThreadSaved || mirrored || !FIREBASE_ENABLED;
     } catch {
       return false;
@@ -2039,6 +2330,15 @@ export const deleteChatMessage = async (
       await deleteChatThread(chatId, requesterId);
     }
 
+    await recordAuditLog({
+      actorId: requesterId,
+      action: 'chat_message_deleted',
+      area: 'المحادثات',
+      targetId: messageId,
+      targetName: chatId,
+      description: 'تم حذف رسالة من المحادثة',
+      details: { chatId, messageId },
+    });
     return true;
   } catch (error) {
     console.error('deleteChatMessage error:', error);
@@ -2075,6 +2375,14 @@ export const deleteChatThread = async (chatId: string, requesterId: string): Pro
       }));
     }
 
+    await recordAuditLog({
+      actorId: requesterId,
+      action: 'chat_thread_deleted',
+      area: 'المحادثات',
+      targetId: chatId,
+      description: 'تم حذف محادثة كاملة',
+      details: { chatId, participantIds },
+    });
     return true;
   } catch (error) {
     console.error('deleteChatThread error:', error);
@@ -2312,8 +2620,18 @@ export const listenToMessages = (
 
 export const toggleUserActive = async (uid: string, isActive: boolean): Promise<boolean> => {
   try {
+    const usersBefore = await getAllUsers();
+    const target = usersBefore.find((item) => item.uid === uid);
     if (FIREBASE_ENABLED) {
       await updateDoc(doc(db, 'users', uid), { isActive });
+      await recordAuditLog({
+        action: isActive ? 'user_activated' : 'user_deactivated',
+        area: 'إدارة المستخدمين',
+        targetId: uid,
+        targetName: target?.name,
+        description: `تم ${isActive ? 'تفعيل' : 'تعطيل'} حساب ${target?.name || uid}`,
+        details: { isActive },
+      });
       return true;
     }
 
@@ -2324,6 +2642,14 @@ export const toggleUserActive = async (uid: string, isActive: boolean): Promise<
     if (idx === -1) return false;
     users[idx].isActive = isActive;
     await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+    await recordAuditLog({
+      action: isActive ? 'user_activated' : 'user_deactivated',
+      area: 'إدارة المستخدمين',
+      targetId: uid,
+      targetName: users[idx].name,
+      description: `تم ${isActive ? 'تفعيل' : 'تعطيل'} حساب ${users[idx].name}`,
+      details: { isActive },
+    });
     return true;
   } catch {
     return false;
@@ -2348,6 +2674,14 @@ export const setUserAdminPermission = async (
         isApproved: true,
         isActive: true,
       });
+      await recordAuditLog({
+        action: makeAdmin ? 'admin_role_granted' : 'admin_role_revoked',
+        area: 'إدارة المستخدمين',
+        targetId: uid,
+        targetName: target.name,
+        description: makeAdmin ? `تم منح ${target.name} صلاحية أدمن` : `تم إلغاء صلاحية الأدمن من ${target.name}`,
+        details: { targetRole: target.role },
+      });
       return true;
     }
 
@@ -2363,6 +2697,14 @@ export const setUserAdminPermission = async (
     users[idx].isApproved = true;
     users[idx].isActive = true;
     await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+    await recordAuditLog({
+      action: makeAdmin ? 'admin_role_granted' : 'admin_role_revoked',
+      area: 'إدارة المستخدمين',
+      targetId: uid,
+      targetName: users[idx].name,
+      description: makeAdmin ? `تم منح ${users[idx].name} صلاحية أدمن` : `تم إلغاء صلاحية الأدمن من ${users[idx].name}`,
+      details: { targetRole: users[idx].role },
+    });
     return true;
   } catch {
     return false;
@@ -2382,6 +2724,14 @@ export const setAdminPermissions = async (
       const target = users.find((u) => u.uid === uid);
       if (!target || (target.role !== 'admin' && target.role !== 'doctor')) return false;
       await updateDoc(doc(db, 'users', uid), { adminPermissions: permissions });
+      await recordAuditLog({
+        action: 'admin_permissions_updated',
+        area: 'إدارة المستخدمين',
+        targetId: uid,
+        targetName: target.name,
+        description: `تم تعديل صلاحيات ${target.name}`,
+        details: { permissions },
+      });
       return true;
     }
 
@@ -2393,6 +2743,14 @@ export const setAdminPermissions = async (
 
     users[idx].adminPermissions = permissions;
     await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+    await recordAuditLog({
+      action: 'admin_permissions_updated',
+      area: 'إدارة المستخدمين',
+      targetId: uid,
+      targetName: users[idx].name,
+      description: `تم تعديل صلاحيات ${users[idx].name}`,
+      details: { permissions },
+    });
     return true;
   } catch {
     return false;
@@ -2401,9 +2759,19 @@ export const setAdminPermissions = async (
 
 export const deleteUser = async (uid: string): Promise<boolean> => {
   try {
+    const usersBefore = await getAllUsers();
+    const target = usersBefore.find((item) => item.uid === uid);
     if (FIREBASE_ENABLED) {
       await deleteDoc(doc(db, 'users', uid));
       await deleteDoc(doc(db, 'doctors', uid)).catch(() => undefined);
+      await recordAuditLog({
+        action: 'user_deleted',
+        area: 'إدارة المستخدمين',
+        targetId: uid,
+        targetName: target?.name,
+        description: `تم حذف حساب ${target?.name || uid}`,
+        details: { role: target?.role, email: target?.email },
+      });
       return true;
     }
 
@@ -2425,6 +2793,14 @@ export const deleteUser = async (uid: string): Promise<boolean> => {
     await AsyncStorage.removeItem(`@transactions_${uid}`);
     await AsyncStorage.removeItem(`@notifications_${uid}`);
     await AsyncStorage.removeItem(`@doctor_schedule_${uid}`);
+    await recordAuditLog({
+      action: 'user_deleted',
+      area: 'إدارة المستخدمين',
+      targetId: uid,
+      targetName: users.find((u: any) => u.uid === uid)?.name,
+      description: `تم حذف حساب ${users.find((u: any) => u.uid === uid)?.name || uid}`,
+      details: { role: users.find((u: any) => u.uid === uid)?.role, email: users.find((u: any) => u.uid === uid)?.email },
+    });
     return true;
   } catch {
     return false;
@@ -2438,8 +2814,18 @@ export const getPendingDoctors = async (): Promise<any[]> => {
 
 export const approveDoctor = async (uid: string): Promise<boolean> => {
   try {
+    const usersBefore = await getAllUsers();
+    const target = usersBefore.find((item) => item.uid === uid);
     if (FIREBASE_ENABLED) {
       await updateDoc(doc(db, 'users', uid), { isApproved: true, isActive: true });
+      await recordAuditLog({
+        action: 'doctor_approved',
+        area: 'إدارة الأطباء',
+        targetId: uid,
+        targetName: target?.name,
+        description: `تم اعتماد الطبيب ${target?.name || uid}`,
+        details: { email: target?.email, medicalId: target?.medicalId },
+      });
       return true;
     }
 
@@ -2451,6 +2837,14 @@ export const approveDoctor = async (uid: string): Promise<boolean> => {
     users[idx].isApproved = true;
     users[idx].isActive = true;
     await AsyncStorage.setItem('@medicare_users', JSON.stringify(users));
+    await recordAuditLog({
+      action: 'doctor_approved',
+      area: 'إدارة الأطباء',
+      targetId: uid,
+      targetName: users[idx].name,
+      description: `تم اعتماد الطبيب ${users[idx].name}`,
+      details: { email: users[idx].email, medicalId: users[idx].medicalId },
+    });
     return true;
   } catch {
     return false;
@@ -2459,9 +2853,19 @@ export const approveDoctor = async (uid: string): Promise<boolean> => {
 
 export const rejectDoctor = async (uid: string): Promise<boolean> => {
   try {
+    const usersBefore = await getAllUsers();
+    const target = usersBefore.find((item) => item.uid === uid);
     if (FIREBASE_ENABLED) {
       await deleteDoc(doc(db, 'users', uid));
       await deleteDoc(doc(db, 'doctors', uid)).catch(() => undefined);
+      await recordAuditLog({
+        action: 'doctor_rejected',
+        area: 'إدارة الأطباء',
+        targetId: uid,
+        targetName: target?.name,
+        description: `تم رفض طبيب وحذف طلبه: ${target?.name || uid}`,
+        details: { email: target?.email, medicalId: target?.medicalId },
+      });
       return true;
     }
 
@@ -2477,6 +2881,14 @@ export const rejectDoctor = async (uid: string): Promise<boolean> => {
       await AsyncStorage.setItem('@doctors', JSON.stringify(filteredDoctors));
     }
     await AsyncStorage.removeItem(`@doctor_schedule_${uid}`);
+    await recordAuditLog({
+      action: 'doctor_rejected',
+      area: 'إدارة الأطباء',
+      targetId: uid,
+      targetName: users.find((u: any) => u.uid === uid)?.name,
+      description: `تم رفض طبيب وحذف طلبه: ${users.find((u: any) => u.uid === uid)?.name || uid}`,
+      details: { email: users.find((u: any) => u.uid === uid)?.email, medicalId: users.find((u: any) => u.uid === uid)?.medicalId },
+    });
     return true;
   } catch {
     return false;
@@ -2491,10 +2903,26 @@ export const updateUserProfile = async (
     if (FIREBASE_ENABLED) {
       await updateDoc(doc(db, 'users', uid), updates);
       await updateCachedUser(uid, updates);
+      await recordAuditLog({
+        actorId: uid,
+        action: 'profile_updated',
+        area: 'الحساب',
+        targetId: uid,
+        description: 'تم تعديل بيانات الحساب',
+        details: { fields: Object.keys(updates || {}) },
+      });
       return true;
     }
 
     await updateCachedUser(uid, updates);
+    await recordAuditLog({
+      actorId: uid,
+      action: 'profile_updated',
+      area: 'الحساب',
+      targetId: uid,
+      description: 'تم تعديل بيانات الحساب',
+      details: { fields: Object.keys(updates || {}) },
+    });
     return true;
   } catch {
     return false;
@@ -2522,6 +2950,15 @@ export const requestDoctorProfileUpdate = async (
     }
 
     await updateCachedUser(currentUser.uid, { pendingProfileUpdate: request });
+    await recordAuditLog({
+      actorId: currentUser.uid,
+      action: 'doctor_profile_update_requested',
+      area: 'الحساب',
+      targetId: currentUser.uid,
+      targetName: currentUser.name,
+      description: `${currentUser.name} طلب تعديل بيانات الطبيب`,
+      details: { fields: Object.keys(cleanUpdates || {}) },
+    });
     return true;
   } catch (error) {
     console.error('requestDoctorProfileUpdate error:', error);
@@ -2550,6 +2987,14 @@ export const approveDoctorProfileUpdate = async (
     await updateCachedUser(uid, { ...updates, pendingProfileUpdate: undefined });
     const refreshed = { ...target, ...updates, pendingProfileUpdate: undefined };
     if (refreshed.role === 'doctor') await addDoctorToCatalog(refreshed);
+    await recordAuditLog({
+      action: 'doctor_profile_update_approved',
+      area: 'إدارة الأطباء',
+      targetId: uid,
+      targetName: target?.name,
+      description: `تم اعتماد تعديل بيانات الطبيب ${target?.name || uid}`,
+      details: { fields: Object.keys(updates || {}) },
+    });
     return true;
   } catch (error) {
     console.error('approveDoctorProfileUpdate error:', error);
@@ -2567,6 +3012,12 @@ export const rejectDoctorProfileUpdate = async (
       await setDoc(doc(db, 'users', uid), { pendingProfileUpdate: null }, { merge: true });
     }
     await updateCachedUser(uid, { pendingProfileUpdate: undefined });
+    await recordAuditLog({
+      action: 'doctor_profile_update_rejected',
+      area: 'إدارة الأطباء',
+      targetId: uid,
+      description: 'تم رفض تعديل بيانات الطبيب',
+    });
     return true;
   } catch (error) {
     console.error('rejectDoctorProfileUpdate error:', error);
@@ -2585,6 +3036,15 @@ export const updateUserWalletBalance = async (
     }
 
     await updateCachedUser(currentUser.uid, { balance: nextBalance });
+    await recordAuditLog({
+      actorId: currentUser.uid,
+      action: 'wallet_balance_updated',
+      area: 'المحفظة والمعاملات',
+      targetId: currentUser.uid,
+      targetName: currentUser.name,
+      description: `تم تحديث رصيد المحفظة إلى ${nextBalance}`,
+      details: { balance: nextBalance, previousBalance: currentUser.balance },
+    });
     return { ...currentUser, balance: nextBalance };
   } catch (error) {
     console.error('updateUserWalletBalance error:', error);

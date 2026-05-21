@@ -127,6 +127,20 @@ export interface Transaction {
   createdAt?: string;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  actorId?: string;
+  actorName?: string;
+  actorRole?: UserRole;
+  action: string;
+  area: string;
+  targetId?: string;
+  targetName?: string;
+  description: string;
+  details?: Record<string, any>;
+  createdAt: string;
+}
+
 export interface AppNotification {
   id: string;
   userId: string;
