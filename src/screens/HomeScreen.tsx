@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { Linking, StyleSheet, Text, View, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
 import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 import { GlassCard } from '../components/GlassCard';
 import { useUser } from '../context/UserContext';
 import { getUserResults, getUserPrescriptions, subscribeNotificationSummary, subscribeUserAppointments } from '../utils/localDataService';
 import { useLanguage } from '../context/LanguageContext';
+import { getOfficialHealthNews, type OfficialHealthNewsItem } from '../utils/officialHealthNews';
 
 interface HomeScreenProps {
   navigation: {
@@ -21,6 +22,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
   const [prescriptionsCount, setPrescriptionsCount] = useState(0);
   const [unreadChats, setUnreadChats] = useState(0);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [healthNews, setHealthNews] = useState<OfficialHealthNewsItem[]>([]);
   const healthFields = [
     user?.age && user.age > 0 ? user.age : undefined,
     user?.weight && user.weight > 0 ? user.weight : undefined,
@@ -53,6 +55,16 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     setUnreadNotifications(summary.totalUnread);
     setUnreadChats(summary.unreadChats);
   }), [user?.uid]);
+
+  useEffect(() => {
+    let mounted = true;
+    getOfficialHealthNews().then((items) => {
+      if (mounted) setHealthNews(items);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -88,14 +100,34 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
           <StatCard label={t('wallet')} value={`${user?.balance?.toFixed(0) || 0} ${currencySymbol}`} icon="wallet" color={COLORS.danger} bgColor="rgba(227, 26, 26, 0.15)" onPress={() => navigation.navigate('Payment')} />
         </View>
 
-        <View style={styles.gradientCard}>
-          <View style={styles.gradientCardHeader}>
-            <Text style={styles.gradientCardEmoji}>💡</Text>
-            <View style={styles.gradientCardTexts}>
-              <Text style={styles.gradientCardTitle}>{t('healthTipTitle')}</Text>
-              <Text style={styles.gradientCardDesc}>{t('healthTipDesc')}</Text>
+        <View style={styles.officialNewsCard}>
+          <View style={styles.officialNewsHeader}>
+            <View style={styles.officialNewsIcon}>
+              <FontAwesome5 name="shield-virus" size={20} color="#FFF" />
+            </View>
+            <View style={styles.officialNewsTitleBox}>
+              <Text style={styles.officialNewsTitle}>موجز الصحة الرسمي</Text>
+              <Text style={styles.officialNewsSubtitle}>آخر 3 تحديثات من منظمة الصحة العالمية وجهات الصحة الرسمية</Text>
             </View>
           </View>
+          {healthNews.length === 0 ? (
+            <Text style={styles.officialNewsLoading}>جاري تحديث المصادر الرسمية...</Text>
+          ) : (
+            healthNews.slice(0, 3).map((item, index) => (
+              <TouchableOpacity key={item.id} style={styles.officialNewsItem} onPress={() => Linking.openURL(item.sourceUrl)}>
+                <View style={styles.officialNewsNumber}>
+                  <Text style={styles.officialNewsNumberText}>{index + 1}</Text>
+                </View>
+                <View style={styles.officialNewsTextBox}>
+                  <Text style={styles.officialNewsItemTitle} numberOfLines={2}>{item.title}</Text>
+                  <Text style={styles.officialNewsSource}>
+                    {item.level ? `${item.level} • ` : ''}{item.source}
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={17} color="rgba(255,255,255,0.8)" />
+              </TouchableOpacity>
+            ))
+          )}
         </View>
 
         <Text style={styles.sectionTitle}>{t('quickActions')}</Text>
@@ -192,12 +224,19 @@ const styles = StyleSheet.create({
   statValue: { color: COLORS.textPrimary, fontSize: 24, fontWeight: 'bold' },
   iconWrapper: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   statLabel: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '500' },
-  gradientCard: { backgroundColor: COLORS.primary, borderRadius: 24, padding: 24, marginBottom: 24 },
-  gradientCardHeader: { flexDirection: 'row-reverse', alignItems: 'center' },
-  gradientCardEmoji: { fontSize: 32, marginLeft: 16 },
-  gradientCardTexts: { flex: 1 },
-  gradientCardTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginBottom: 4, textAlign: 'right' },
-  gradientCardDesc: { color: 'rgba(255,255,255,0.85)', fontSize: 13, lineHeight: 20, textAlign: 'right' },
+  officialNewsCard: { backgroundColor: COLORS.primary, borderRadius: 24, padding: 18, marginBottom: 24 },
+  officialNewsHeader: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 12 },
+  officialNewsIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
+  officialNewsTitleBox: { flex: 1 },
+  officialNewsTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold', textAlign: 'right' },
+  officialNewsSubtitle: { color: 'rgba(255,255,255,0.84)', fontSize: 11, marginTop: 4, textAlign: 'right', lineHeight: 17 },
+  officialNewsLoading: { color: 'rgba(255,255,255,0.86)', fontSize: 13, textAlign: 'right', paddingVertical: 8 },
+  officialNewsItem: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.09)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.16)', borderRadius: 16, padding: 10, marginTop: 8, gap: 10 },
+  officialNewsNumber: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  officialNewsNumberText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
+  officialNewsTextBox: { flex: 1 },
+  officialNewsItemTitle: { color: '#FFF', fontSize: 13, fontWeight: 'bold', lineHeight: 19, textAlign: 'right' },
+  officialNewsSource: { color: 'rgba(255,255,255,0.78)', fontSize: 10, marginTop: 4, textAlign: 'right' },
   sectionTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'right' },
   quickActionsContainer: { flexDirection: 'row-reverse', justifyContent: 'space-between', backgroundColor: COLORS.bgCard, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: COLORS.borderColor },
   quickAction: { alignItems: 'center' },
